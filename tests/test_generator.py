@@ -64,7 +64,7 @@ def test_empty_main_items_still_renders():
         date=date(2026, 6, 7), main_items=[], appendix_items=[], channel_names=[]
     )
     md = render_markdown(content)
-    assert "Intelligence Briefing" in md
+    assert "The Daily Telegram" in md
 
 
 from tg_compiler.generator import generate_briefing

@@ -126,17 +126,17 @@ def _render_front_page_md(intel: dict, target_date: date) -> str:
     )
 
 
-def _md_to_pdf(md_text: str, date_str: str, out_dir: Path) -> Path:
+def _md_to_pdf(md_text: str, date_str: str, date_dir: Path) -> Path:
     from markdown_pdf import MarkdownPdf, Section
 
     css_path = TEMPLATES_DIR / "briefing.css"
     user_css = css_path.read_text() if css_path.exists() else None
 
-    pdf = MarkdownPdf(toc_level=0)
-    pdf.meta["title"] = f"Intelligence Assessment {date_str}"
-    pdf.add_section(Section(md_text), user_css=user_css)
-    pdf_path = out_dir / f"intel_front_{date_str}.pdf"
-    pdf.save(str(pdf_path))
+    pdf_obj = MarkdownPdf(toc_level=0)
+    pdf_obj.meta["title"] = f"The Daily Telegram — Intelligence Assessment {date_str}"
+    pdf_obj.add_section(Section(md_text), user_css=user_css)
+    pdf_path = date_dir / f"intel_front_{date_str}.pdf"
+    pdf_obj.save(str(pdf_path))
     return pdf_path
 
 
@@ -165,11 +165,14 @@ def _prepend_pdf(front_page_path: Path, briefing_path: Path) -> None:
 
 async def run_analysis(config: AppConfig, target_date: date) -> None:
     date_str = target_date.isoformat()
-    briefing_path = Path(config.generation.output_dir) / f"briefing_{date_str}.pdf"
+    date_dir = Path(config.generation.output_dir) / date_str
 
-    if not briefing_path.exists():
+    # Find the most recent TheDailyTelegram PDF in the date subdirectory
+    pdfs = sorted(date_dir.glob("TheDailyTelegram_*.pdf")) if date_dir.exists() else []
+    if not pdfs:
         log.error("No briefing found for %s. Run --batch first.", date_str)
         return
+    briefing_path = pdfs[-1]  # latest by timestamped filename
 
     db = Database(config.storage.db_path)
     db.init_schema()
@@ -185,8 +188,7 @@ async def run_analysis(config: AppConfig, target_date: date) -> None:
         return
 
     md = _render_front_page_md(intel, target_date)
-    out_dir = Path(config.generation.output_dir)
-    front_page_pdf = _md_to_pdf(md, date_str, out_dir)
+    front_page_pdf = _md_to_pdf(md, date_str, date_dir)
 
     try:
         _prepend_pdf(front_page_pdf, briefing_path)
