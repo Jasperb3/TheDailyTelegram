@@ -88,7 +88,7 @@ class Analyzer:
 
     def _get_model(self):
         if self._model is None:
-            client = lms.Client(port=self._cfg.lmstudio.server_port)
+            client = lms.Client(f"localhost:{self._cfg.lmstudio.server_port}")
             self._model = client.llm.model(self._cfg.lmstudio.model)
         return self._model
 

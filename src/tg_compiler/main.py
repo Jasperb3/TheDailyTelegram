@@ -122,7 +122,7 @@ async def run_daemon(config: AppConfig) -> None:
             if channel_cfg is None:
                 log.warning("Received message from unmapped channel %s — skipping", channel_id)
                 return
-            text = msg.text or msg.caption or ""
+            text = msg.text or ""
             ts = msg.date
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)

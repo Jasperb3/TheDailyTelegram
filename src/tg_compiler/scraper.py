@@ -54,7 +54,7 @@ class Scraper:
                     if msg.id > max_id_seen:
                         max_id_seen = msg.id
                     continue
-                text = msg.text or msg.caption or ""
+                text = msg.text or ""
                 media_paths: list[str] = []
 
                 if msg.photo:
