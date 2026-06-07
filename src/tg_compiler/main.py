@@ -189,12 +189,34 @@ async def run_daemon(config: AppConfig) -> None:
         await client.disconnect()
 
 
+def _parse_since(since_str: str) -> datetime:
+    """Parse --since into a UTC datetime. Accepts HH:MM (today), YYYY-MM-DD, or YYYY-MM-DDTHH:MM."""
+    now = datetime.now(timezone.utc)
+    for fmt in ("%H:%M", "%Y-%m-%d", "%Y-%m-%dT%H:%M"):
+        try:
+            parsed = datetime.strptime(since_str, fmt)
+            if fmt == "%H:%M":
+                return now.replace(hour=parsed.hour, minute=parsed.minute, second=0, microsecond=0)
+            if fmt == "%Y-%m-%d":
+                return parsed.replace(hour=0, minute=0, second=0, tzinfo=timezone.utc)
+            return parsed.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    raise SystemExit(f"Cannot parse --since value: {since_str!r}. Use HH:MM, YYYY-MM-DD, or YYYY-MM-DDTHH:MM")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="tg_compiler")
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--batch", action="store_true")
     parser.add_argument("--daemon", action="store_true")
     parser.add_argument("--generate", action="store_true")
+    parser.add_argument(
+        "--since",
+        metavar="TIME",
+        help="Re-scrape from this point (HH:MM, YYYY-MM-DD, or YYYY-MM-DDTHH:MM). "
+             "Resets channel cursors and overrides lookback_seconds.",
+    )
     args = parser.parse_args()
 
     if not (args.batch or args.daemon or args.generate):
@@ -203,6 +225,17 @@ def main() -> None:
 
     cfg = load_config(args.config, env_override=True)
     os.makedirs(cfg.storage.media_dir, exist_ok=True)
+
+    if args.since:
+        if not args.batch:
+            raise SystemExit("--since can only be used with --batch")
+        since_dt = _parse_since(args.since)
+        now = datetime.now(timezone.utc)
+        cfg.telegram.lookback_seconds = max(1, int((now - since_dt).total_seconds()))
+        db = Database(cfg.storage.db_path)
+        db.init_schema()
+        db.reset_all_cursors()
+        log.info("--since %s: lookback set to %ds, all channel cursors reset", args.since, cfg.telegram.lookback_seconds)
 
     if args.batch:
         asyncio.run(run_batch(cfg))

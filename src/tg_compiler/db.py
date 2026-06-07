@@ -112,6 +112,10 @@ class Database:
         ).fetchone()
         return row["last_seen_id"] if row else 0
 
+    def reset_all_cursors(self) -> None:
+        self._conn.execute("UPDATE channel_cursors SET last_seen_id=0")
+        self._conn.commit()
+
     def set_last_seen_id(self, channel_id: int, message_id: int) -> None:
         self._conn.execute(
             """INSERT INTO channel_cursors(channel_id, last_seen_id)
