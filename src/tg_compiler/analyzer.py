@@ -38,6 +38,27 @@ class PostAnalysis(BaseModel):
     reasoning: str = ""
 
 
+_ENTITY_GARBAGE = re.compile(r'[`{}<>]|json|PostAnalysis|importance_score|urgency_score')
+
+def _clean_entities(entities: list[str]) -> list[str]:
+    return [
+        e.strip() for e in entities
+        if e and len(e.strip()) <= 80 and not _ENTITY_GARBAGE.search(e)
+    ]
+
+
+def _clean_image_insights(text: str | None) -> str | None:
+    if not text:
+        return None
+    stripped = text.strip()
+    if stripped.lower() in ('n/a', 'none', 'no image provided', 'no image provided.',
+                             'no image.', 'no image', 'na', ''):
+        return None
+    if len(stripped) < 10:
+        return None
+    return stripped
+
+
 def parse_analysis_fallback(raw: str) -> PostAnalysis:
     score_match = re.search(r"importance[^\d]*(\d)", raw, re.IGNORECASE)
     importance = int(score_match.group(1)) if score_match else 3
@@ -88,6 +109,12 @@ def build_messages(post: PostRecord, system_prompt: str) -> list[dict]:
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": content},
     ]
+
+
+def _sanitize(analysis: PostAnalysis) -> PostAnalysis:
+    analysis.key_entities = _clean_entities(analysis.key_entities)
+    analysis.image_description = _clean_image_insights(analysis.image_description)
+    return analysis
 
 
 class Analyzer:
@@ -152,8 +179,8 @@ class Analyzer:
             try:
                 result = await asyncio.to_thread(self._call_llm, messages, True)
                 if isinstance(result, PostAnalysis):
-                    return result
-                return parse_analysis_fallback(result if isinstance(result, str) else "")
+                    return _sanitize(result)
+                return _sanitize(parse_analysis_fallback(result if isinstance(result, str) else ""))
             except Exception as e:
                 if attempt == 2:
                     log.warning(
@@ -163,11 +190,11 @@ class Analyzer:
                     try:
                         result = await asyncio.to_thread(self._call_llm, messages, False)
                         if isinstance(result, PostAnalysis):
-                            return result
-                        return parse_analysis_fallback(result if isinstance(result, str) else "")
+                            return _sanitize(result)
+                        return _sanitize(parse_analysis_fallback(result if isinstance(result, str) else ""))
                     except Exception as fe:
                         log.error("Fallback also failed for post %s: %s", post.message_id, fe)
-                        return parse_analysis_fallback("")
+                        return _sanitize(parse_analysis_fallback(""))
                 await asyncio.sleep(10 * (attempt + 1))
 
     async def process_unanalysed(

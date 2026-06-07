@@ -45,7 +45,7 @@ def test_markdown_has_channel_section():
 
 def test_markdown_shows_importance_badge():
     md = render_markdown(make_content())
-    assert any(badge in md for badge in ["🔴", "🟡", "🟢"])
+    assert "⬤" in md
 
 
 def test_markdown_includes_post_summary():

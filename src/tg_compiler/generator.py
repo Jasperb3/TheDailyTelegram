@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+import re
 from pathlib import Path
 from datetime import date
 
@@ -11,18 +12,28 @@ log = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent.parent.parent / "templates"
 
+_ENTITY_GARBAGE = re.compile(r'[`{}<>]|json|PostAnalysis|importance_score|urgency_score')
 
-def _importance_badge(score: int) -> str:
+
+def _importance_badge(score: float) -> str:
     if score >= 4:
-        return "🔴"
+        return '<span style="color:#e74c3c;font-weight:bold">⬤</span>'
     if score >= 3:
-        return "🟡"
-    return "🟢"
+        return '<span style="color:#e67e22;font-weight:bold">⬤</span>'
+    return '<span style="color:#27ae60;font-weight:bold">⬤</span>'
+
+
+def _clean_entities(entities: list[str]) -> list[str]:
+    return [
+        e.strip() for e in entities
+        if e and len(e.strip()) <= 80 and not _ENTITY_GARBAGE.search(e)
+    ]
 
 
 def render_markdown(content: BriefingContent) -> str:
-    env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)))
+    env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=False)
     env.globals["importance_badge"] = _importance_badge
+    env.filters["clean_entities"] = _clean_entities
     tmpl = env.get_template("briefing.md.j2")
     return tmpl.render(content=content)
 

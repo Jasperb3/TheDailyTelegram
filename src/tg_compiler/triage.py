@@ -39,6 +39,8 @@ def triage(
     scored: list[TriagedPost] = []
 
     for post, analysis in pairs:
+        if not analysis.summary or len(analysis.summary.strip()) < 10:
+            continue
         score = _composite(analysis)
         text_lower = (post.text or "").lower()
         for kw in config.keywords:

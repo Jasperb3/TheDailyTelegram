@@ -14,7 +14,7 @@ def make_pair(
         text=text, media_paths=[], has_images=False, raw_json="{}",
     )
     analysis = AnalysisRecord(
-        id=msg_id, post_id=msg_id, summary="summary",
+        id=msg_id, post_id=msg_id, summary="A test post summary.",
         importance_score=importance, urgency_score=urgency,
         credibility_score=credibility, relevance_score=relevance,
         category=category, key_entities=[], model_used="test",

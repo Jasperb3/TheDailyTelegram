@@ -3,7 +3,7 @@
 ## Executive Summary
 
 {% for item in content.main_items[:10] %}
-- {{ importance_badge(item.analysis.importance_score) }} **{{ item.analysis.category }}** — {{ item.analysis.summary }} _({{ item.post.channel_name }})_
+- {{ importance_badge(item.analysis.importance_score) }} **{{ item.analysis.category }}** — {{ item.analysis.summary }} _({{ item.post.channel_name }}, {{ item.post.timestamp.strftime('%H:%M UTC') }})_
 {% else %}
 _No high-priority items today._
 {% endfor %}
@@ -12,21 +12,19 @@ _No high-priority items today._
 ## Channel: {{ channel }}
 
 {% for item in content.main_items if item.post.channel_name == channel %}
-### {{ importance_badge(item.analysis.importance_score) }} Post {{ item.post.message_id }} — {{ item.post.timestamp.strftime('%H:%M UTC') }}
+### {{ importance_badge(item.analysis.importance_score) }} {{ item.analysis.summary[:90] }}{% if item.analysis.summary|length > 90 %}…{% endif %}
 
-**Summary:** {{ item.analysis.summary }}
+<small>{{ item.post.timestamp.strftime('%H:%M UTC') }} · {{ item.analysis.category }} · Score {{ "%.1f"|format(item.composite_score) }}/5 · ID {{ item.post.message_id }}</small>
 
-**Category:** {{ item.analysis.category }} | **Score:** {{ "%.1f"|format(item.composite_score) }}/5
+**Entities:** {{ item.analysis.key_entities | clean_entities | join(', ') or '—' }}
 
-**Entities:** {{ item.analysis.key_entities | join(', ') or '_none_' }}
-
-{% if item.analysis.image_insights %}
+{% if item.analysis.image_insights and item.analysis.image_insights | lower not in ('n/a', 'none', 'no image provided', 'no image provided.', 'no image.') and item.analysis.image_insights | length > 10 %}
 **Image:** {{ item.analysis.image_insights }}
 {% endif %}
 
 {% if item.post.media_paths %}
 {% for img in item.post.media_paths[:3] %}
-![Attached image]({{ img }})
+![]({{ img }})
 {% endfor %}
 {% endif %}
 
@@ -41,7 +39,7 @@ _No posts above threshold for this channel._
 ## Appendix — Lower Priority Items
 
 {% for item in content.appendix_items %}
-- **{{ item.post.channel_name }}** / Post {{ item.post.message_id }}: {{ item.analysis.summary }} _(score: {{ "%.1f"|format(item.composite_score) }})_
+- **{{ item.post.channel_name }}** · {{ item.post.timestamp.strftime('%H:%M UTC') }} · {{ item.analysis.category }} · {{ item.analysis.summary[:100] }}{% if item.analysis.summary|length > 100 %}…{% endif %} _(score: {{ "%.1f"|format(item.composite_score) }})_
 {% endfor %}
 {% endif %}
 
