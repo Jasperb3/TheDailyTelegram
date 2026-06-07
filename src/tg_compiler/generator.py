@@ -66,7 +66,7 @@ def _render_pdf(md_text: str, out: Path, date_str: str) -> Path:
     css_path = TEMPLATES_DIR / "briefing.css"
     user_css = css_path.read_text() if css_path.exists() else None
 
-    pdf = MarkdownPdf(toc_level=2)
+    pdf = MarkdownPdf(toc_level=0)
     pdf.meta["title"] = f"Daily Briefing {date_str}"
     pdf.add_section(Section(md_text), user_css=user_css)
     pdf_path = out / f"briefing_{date_str}.pdf"

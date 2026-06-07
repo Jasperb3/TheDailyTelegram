@@ -30,7 +30,7 @@ def make_content(n_main=2, n_appendix=1):
 
 def test_markdown_contains_date():
     md = render_markdown(make_content())
-    assert "2026-06-07" in md
+    assert "2026" in md and "June" in md
 
 
 def test_markdown_has_executive_summary():
@@ -63,7 +63,7 @@ def test_empty_main_items_still_renders():
         date=date(2026, 6, 7), main_items=[], appendix_items=[], channel_names=[]
     )
     md = render_markdown(content)
-    assert "2026-06-07" in md
+    assert "Intelligence Briefing" in md
 
 
 from tg_compiler.generator import generate_briefing

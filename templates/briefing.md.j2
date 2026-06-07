@@ -1,10 +1,16 @@
-# Daily Intelligence Briefing — {{ content.date }}
+<div class="masthead">
+<div class="masthead-rule-thick"></div>
+<div class="masthead-title">Intelligence Briefing</div>
+<div class="masthead-rule-double"></div>
+<div class="masthead-meta">{{ content.date.strftime('%A, %-d %B %Y') }} &nbsp;·&nbsp; Daily Edition</div>
+<div class="masthead-rule-thin"></div>
+</div>
 
 ## Executive Summary
 
 {% for item in content.main_items[:10] %}
 {% set username = content.channel_links.get(item.post.channel_name, '') %}
-- {{ importance_badge(item.composite_score) }} **{{ item.analysis.category }}** — {{ item.analysis.title if item.analysis.title else item.analysis.summary[:90] ~ ('…' if item.analysis.summary|length > 90 else '') }} _({{ item.post.channel_name }}, {{ item.post.timestamp.strftime('%H:%M UTC') }}{% if username %}, [↗ t.me](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %})_
+- {{ importance_badge(item.composite_score) }} <span class="cat-slug">{{ item.analysis.category }}</span> — {{ item.analysis.title if item.analysis.title else item.analysis.summary[:90] ~ ('…' if item.analysis.summary|length > 90 else '') }} _({{ item.post.channel_name }}, {{ item.post.timestamp.strftime('%H:%M UTC') }}{% if username %}, [↗ t.me](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %})_
 {% else %}
 _No high-priority items today._
 {% endfor %}
@@ -17,7 +23,7 @@ _No high-priority items today._
 {% for item in content.main_items if item.post.channel_name == channel %}
 ### {{ importance_badge(item.composite_score) }} {{ item.analysis.title if item.analysis.title else item.analysis.summary[:90] ~ ('…' if item.analysis.summary|length > 90 else '') }}
 
-<small>{{ item.post.timestamp.strftime('%H:%M UTC') }} · {{ item.analysis.category }} · Score {{ "%.1f"|format(item.composite_score) }}/5 · ID {{ item.post.message_id }}{% if username %} · [↗ t.me](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %}</small>
+<small>{{ item.post.timestamp.strftime('%H:%M UTC') }} · <span class="cat-slug">{{ item.analysis.category }}</span> · Score {{ "%.1f"|format(item.composite_score) }}/5 · ID {{ item.post.message_id }}{% if username %} · [↗ t.me](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %}</small>
 
 {{ item.analysis.summary }}
 
@@ -47,10 +53,15 @@ _No posts above threshold for this channel._
 {% if content.appendix_items %}
 ## Appendix — Lower Priority Items
 
+<div class="appendix-cols">
 {% for item in content.appendix_items %}
 {% set username = content.channel_links.get(item.post.channel_name, '') %}
-- **{{ item.post.channel_name }}** · {{ item.post.timestamp.strftime('%H:%M UTC') }} · {{ item.analysis.category }} · {{ item.analysis.summary }} _(score: {{ "%.1f"|format(item.composite_score) }}{% if username %}, [↗](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %})_
+<div class="appendix-item">
+<span class="a-channel">{{ item.post.channel_name }}</span> <span class="a-time">{{ item.post.timestamp.strftime('%H:%M UTC') }}</span> · <span class="cat-slug">{{ item.analysis.category }}</span><br>
+{{ item.analysis.summary }} <span class="a-score">({{ "%.1f"|format(item.composite_score) }}/5{% if username %} · <a href="https://t.me/{{ username }}/{{ item.post.message_id }}">↗</a>{% endif %})</span>
+</div>
 {% endfor %}
+</div>
 {% endif %}
 
 ## Statistics
