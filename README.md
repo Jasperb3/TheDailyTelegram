@@ -1,4 +1,4 @@
-# tg_compiler
+# TelegramCompiler
 
 A local-only Telegram channel intelligence briefing system. Monitors Telegram channels, analyses posts with a locally-running Vision-Language Model via LM Studio, and generates daily ranked PDF briefings — no cloud APIs, no data leaves your machine.
 
