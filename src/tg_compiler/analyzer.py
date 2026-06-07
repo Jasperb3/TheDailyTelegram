@@ -60,15 +60,18 @@ def parse_analysis_fallback(raw: str) -> PostAnalysis:
     )
 
 
-def build_chat_for_post(post: PostRecord, system_prompt: str) -> lms.Chat:
+def build_chat_for_post(
+    post: PostRecord, system_prompt: str, client: "lms.Client | None" = None
+) -> lms.Chat:
     chat = lms.Chat(system_prompt)
     text = post.text[:3000] if len(post.text) > 3000 else post.text
     header = f"Post from {post.channel_name} at {post.timestamp.isoformat()}:\n\n{text}"
 
     image_handles = []
+    prepare = client.prepare_image if client is not None else lms.prepare_image
     for path in post.media_paths[:3]:
         try:
-            image_handles.append(lms.prepare_image(path))
+            image_handles.append(prepare(path))
         except Exception as e:
             log.warning("Could not prepare image %s: %s", path, e)
 
@@ -84,13 +87,18 @@ class Analyzer:
     def __init__(self, config: AppConfig, db: Database):
         self._cfg = config
         self._db = db
+        self._client: lms.Client | None = None
         self._model = None
+
+    def _get_client(self) -> lms.Client:
+        if self._client is None:
+            # api_token kwarg pending lmstudio SDK update; LM_API_TOKEN env var is set
+            self._client = lms.Client(f"{self._cfg.lmstudio.server_host}:{self._cfg.lmstudio.server_port}")
+        return self._client
 
     def _get_model(self):
         if self._model is None:
-            # api_token kwarg pending lmstudio SDK update; LM_API_TOKEN env var is set
-            client = lms.Client(f"{self._cfg.lmstudio.server_host}:{self._cfg.lmstudio.server_port}")
-            self._model = client.llm.model(self._cfg.lmstudio.model)
+            self._model = self._get_client().llm.model(self._cfg.lmstudio.model)
         return self._model
 
     async def analyze_post(
@@ -101,7 +109,7 @@ class Analyzer:
             if (channel_cfg and channel_cfg.custom_prompt)
             else SYSTEM_PROMPT
         )
-        chat = build_chat_for_post(post, system)
+        chat = build_chat_for_post(post, system, client=self._get_client())
         inference_config = {
             "max_tokens": self._cfg.lmstudio.max_tokens,
             "temperature": self._cfg.lmstudio.temperature,

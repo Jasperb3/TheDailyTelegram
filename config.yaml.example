@@ -7,6 +7,7 @@ telegram:
       slug: "news"
       priority: 1.0
   rate_limit_delay_ms: 500
+  lookback_seconds: 604800   # how far back to fetch on first run (default: 1 week)
 
 lmstudio:
   model: "google/gemma-3-4b-it"

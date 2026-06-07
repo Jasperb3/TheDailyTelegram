@@ -3,7 +3,7 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from datetime import timezone
+from datetime import datetime, timedelta, timezone
 
 from telethon import TelegramClient
 from telethon.errors import ChannelPrivateError, FloodWaitError
@@ -46,9 +46,14 @@ class Scraper:
         collected: list[PostRecord] = []
         max_id_seen = last_seen
 
+        lookback_date = (
+            datetime.now(timezone.utc) - timedelta(seconds=self._cfg.telegram.lookback_seconds)
+            if last_seen == 0 else None
+        )
         try:
             async for msg in self._client.iter_messages(
-                channel_entity, offset_id=last_seen, reverse=True, limit=500
+                channel_entity, offset_id=last_seen, offset_date=lookback_date,
+                reverse=True, limit=500
             ):
                 if not isinstance(msg, Message):
                     if msg.id > max_id_seen:

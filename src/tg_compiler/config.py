@@ -18,6 +18,7 @@ class TelegramConfig(BaseModel):
     session_name: str = "briefing_session"
     channels: list[ChannelConfig]
     rate_limit_delay_ms: int = 500
+    lookback_seconds: int = 604800  # how far back to fetch on first run (default: 1 week)
 
 
 class LMStudioConfig(BaseModel):
