@@ -7,6 +7,7 @@ from datetime import timezone
 
 from telethon import TelegramClient
 from telethon.errors import ChannelPrivateError, FloodWaitError
+from telethon.tl.types import Message
 
 from tg_compiler.config import AppConfig, ChannelConfig
 from tg_compiler.db import Database, PostRecord
@@ -49,7 +50,9 @@ class Scraper:
             async for msg in self._client.iter_messages(
                 channel_entity, offset_id=last_seen, reverse=True, limit=500
             ):
-                if not msg.id:
+                if not isinstance(msg, Message):
+                    if msg.id > max_id_seen:
+                        max_id_seen = msg.id
                     continue
                 text = msg.text or msg.caption or ""
                 media_paths: list[str] = []
