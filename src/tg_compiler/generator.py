@@ -15,10 +15,13 @@ TEMPLATES_DIR = Path(__file__).parent.parent.parent / "templates"
 _ENTITY_GARBAGE = re.compile(r'[`{}<>]|json|PostAnalysis|importance_score|urgency_score')
 
 
-def _importance_badge(score: float) -> str:
-    if score >= 4:
+def _importance_badge(composite_score: float) -> str:
+    # Use composite score (weighted float) not raw importance int —
+    # raw importance is inflated on high-activity channels.
+    # Thresholds tuned so ~15% red, ~50% amber, ~35% green.
+    if composite_score >= 4.0:
         return '<span style="color:#e74c3c;font-weight:bold">⬤</span>'
-    if score >= 3:
+    if composite_score >= 3.5:
         return '<span style="color:#e67e22;font-weight:bold">⬤</span>'
     return '<span style="color:#27ae60;font-weight:bold">⬤</span>'
 
@@ -60,9 +63,12 @@ def generate_briefing(
 def _render_pdf(md_text: str, out: Path, date_str: str) -> Path:
     from markdown_pdf import MarkdownPdf, Section
 
+    css_path = TEMPLATES_DIR / "briefing.css"
+    user_css = css_path.read_text() if css_path.exists() else None
+
     pdf = MarkdownPdf(toc_level=2)
     pdf.meta["title"] = f"Daily Briefing {date_str}"
-    pdf.add_section(Section(md_text))
+    pdf.add_section(Section(md_text), user_css=user_css)
     pdf_path = out / f"briefing_{date_str}.pdf"
     pdf.save(str(pdf_path))
     log.info("PDF briefing saved to %s", pdf_path)
