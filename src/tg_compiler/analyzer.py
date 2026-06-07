@@ -16,16 +16,18 @@ log = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "You are an intelligence analyst. For each Telegram post:\n"
-    "1. Write a 1-2 sentence summary.\n"
-    "2. Score importance, urgency, credibility, relevance each 1-5.\n"
-    "3. Category: Breaking News | Analysis | Official Statement | Rumor | Media | Other.\n"
-    "4. List up to 5 key named entities.\n"
-    "5. Set image_substantive=true only if the image contains info absent from the text.\n"
+    "1. Write a concise headline title (5-10 words, no punctuation at end).\n"
+    "2. Write a 1-2 sentence summary.\n"
+    "3. Score importance, urgency, credibility, relevance each 1-5.\n"
+    "4. Category: Breaking News | Analysis | Official Statement | Rumor | Media | Other.\n"
+    "5. List up to 5 key named entities.\n"
+    "6. Set image_substantive=true only if the image contains info absent from the text.\n"
     "Respond with valid JSON matching the PostAnalysis schema."
 )
 
 
 class PostAnalysis(BaseModel):
+    title: str = ""
     summary: str
     importance_score: int = Field(..., ge=1, le=5)
     urgency_score: int = Field(..., ge=1, le=5)
@@ -207,6 +209,7 @@ class Analyzer:
             analysis = await self.analyze_post(post, channel_cfg)
             self._db.insert_analysis(AnalysisRecord(
                 post_id=post.id,
+                title=analysis.title,
                 summary=analysis.summary,
                 importance_score=analysis.importance_score,
                 urgency_score=analysis.urgency_score,

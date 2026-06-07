@@ -12,9 +12,11 @@ _No high-priority items today._
 ## Channel: {{ channel }}
 
 {% for item in content.main_items if item.post.channel_name == channel %}
-### {{ importance_badge(item.composite_score) }} {{ item.analysis.summary[:90] }}{% if item.analysis.summary|length > 90 %}…{% endif %}
+### {{ importance_badge(item.composite_score) }} {{ item.analysis.title if item.analysis.title else item.analysis.summary[:90] ~ ('…' if item.analysis.summary|length > 90 else '') }}
 
 <small>{{ item.post.timestamp.strftime('%H:%M UTC') }} · {{ item.analysis.category }} · Score {{ "%.1f"|format(item.composite_score) }}/5 · ID {{ item.post.message_id }}</small>
+
+{{ item.analysis.summary }}
 
 **Entities:** {{ item.analysis.key_entities | clean_entities | join(', ') or '—' }}
 

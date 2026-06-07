@@ -30,6 +30,7 @@ class AnalysisRecord:
     key_entities: list[str]
     model_used: str
     image_insights: str | None = None
+    title: str = ""
     id: int | None = None
 
 
@@ -56,6 +57,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS analyses (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 post_id INTEGER REFERENCES posts(id),
+                title TEXT,
                 summary TEXT NOT NULL,
                 importance_score INTEGER,
                 urgency_score INTEGER,
@@ -74,6 +76,12 @@ class Database:
             );
         """)
         self._conn.commit()
+        # Migrate: add title column to existing DBs that predate this field
+        try:
+            self._conn.execute("ALTER TABLE analyses ADD COLUMN title TEXT")
+            self._conn.commit()
+        except Exception:
+            pass  # column already exists
 
     def insert_post(self, post: PostRecord) -> int | None:
         try:
@@ -126,10 +134,10 @@ class Database:
     def insert_analysis(self, rec: AnalysisRecord) -> int:
         cur = self._conn.execute(
             """INSERT INTO analyses
-               (post_id, summary, importance_score, urgency_score, credibility_score,
+               (post_id, title, summary, importance_score, urgency_score, credibility_score,
                 relevance_score, category, key_entities, image_insights, model_used)
-               VALUES (?,?,?,?,?,?,?,?,?,?)""",
-            (rec.post_id, rec.summary, rec.importance_score, rec.urgency_score,
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (rec.post_id, rec.title, rec.summary, rec.importance_score, rec.urgency_score,
              rec.credibility_score, rec.relevance_score, rec.category,
              json.dumps(rec.key_entities), rec.image_insights, rec.model_used),
         )
@@ -138,7 +146,7 @@ class Database:
 
     def get_days_posts_with_analyses(self, date_str: str) -> list[tuple[PostRecord, AnalysisRecord]]:
         rows = self._conn.execute(
-            """SELECT p.*, a.id as a_id, a.summary, a.importance_score, a.urgency_score,
+            """SELECT p.*, a.id as a_id, a.title, a.summary, a.importance_score, a.urgency_score,
                       a.credibility_score, a.relevance_score, a.category,
                       a.key_entities, a.image_insights, a.model_used
                FROM posts p
@@ -152,6 +160,7 @@ class Database:
             analysis = AnalysisRecord(
                 id=row["a_id"],
                 post_id=post.id,
+                title=row["title"] or "",
                 summary=row["summary"],
                 importance_score=row["importance_score"],
                 urgency_score=row["urgency_score"],
