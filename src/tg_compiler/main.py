@@ -53,6 +53,9 @@ async def run_batch(config: AppConfig) -> None:
     path = generate_briefing(content, config.generation.output_dir, pdf=True)
     log.info("Briefing generated: %s", path)
 
+    from tg_compiler.synthesiser import run_analysis
+    await run_analysis(config, today)
+
 
 def purge_old_media(media_dir: str, retention_days: int) -> int:
     cutoff = datetime.now() - timedelta(days=retention_days)

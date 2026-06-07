@@ -204,15 +204,17 @@ class Analyzer:
             completion = client.chat.completions.create(
                 model=cfg.model,
                 messages=messages,
-                response_format={"type": "json_object"},
                 temperature=cfg.temperature,
                 max_tokens=cfg.max_tokens,
             )
             raw = completion.choices[0].message.content or ""
 
-        # Try to parse the raw JSON string ourselves
+        # Strip markdown fences then try to parse JSON
+        stripped = raw.strip()
+        if stripped.startswith("```"):
+            stripped = stripped.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
         try:
-            return PostAnalysis.model_validate_json(raw)
+            return PostAnalysis.model_validate_json(stripped)
         except Exception:
             return raw
 
