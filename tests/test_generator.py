@@ -64,3 +64,42 @@ def test_empty_main_items_still_renders():
     )
     md = render_markdown(content)
     assert "2026-06-07" in md
+
+
+from tg_compiler.generator import generate_briefing
+
+
+def test_pdf_file_is_created(tmp_path):
+    content = make_content(n_main=2)
+    path = generate_briefing(content, output_dir=str(tmp_path), pdf=True)
+    assert path.suffix == ".pdf"
+    assert path.exists()
+    assert path.stat().st_size > 0
+
+
+def test_markdown_file_is_always_created(tmp_path):
+    content = make_content()
+    path = generate_briefing(content, output_dir=str(tmp_path), pdf=False)
+    assert path.suffix == ".md"
+    assert path.exists()
+
+
+from tg_compiler.main import purge_old_media
+
+
+def test_purge_removes_old_directories(tmp_path):
+    old_dir = tmp_path / "news" / "2020-01-01"
+    recent_dir = tmp_path / "news" / "2026-06-07"
+    old_dir.mkdir(parents=True)
+    recent_dir.mkdir(parents=True)
+    (old_dir / "1.jpg").write_bytes(b"x")
+    (recent_dir / "2.jpg").write_bytes(b"x")
+
+    removed = purge_old_media(str(tmp_path), retention_days=30)
+    assert removed == 1
+    assert not old_dir.exists()
+    assert recent_dir.exists()
+
+
+def test_purge_nonexistent_dir_returns_zero():
+    assert purge_old_media("/nonexistent/path/abc123", retention_days=30) == 0
