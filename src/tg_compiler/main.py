@@ -8,7 +8,10 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+from dotenv import load_dotenv
 from jinja2 import Environment, FileSystemLoader
+
+load_dotenv()
 
 from tg_compiler.config import load_config, AppConfig, ChannelConfig
 from tg_compiler.db import Database, PostRecord

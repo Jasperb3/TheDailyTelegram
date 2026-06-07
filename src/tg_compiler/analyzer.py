@@ -88,6 +88,7 @@ class Analyzer:
 
     def _get_model(self):
         if self._model is None:
+            # api_token kwarg pending lmstudio SDK update; LM_API_TOKEN env var is set
             client = lms.Client(f"{self._cfg.lmstudio.server_host}:{self._cfg.lmstudio.server_port}")
             self._model = client.llm.model(self._cfg.lmstudio.model)
         return self._model

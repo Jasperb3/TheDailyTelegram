@@ -24,6 +24,7 @@ class LMStudioConfig(BaseModel):
     model: str
     server_host: str = "localhost"
     server_port: int = 1234
+    api_token: str | None = None
     temperature: float = 0.3
     max_tokens: int = 800
 
@@ -71,4 +72,6 @@ def load_config(path: str, env_override: bool = False) -> AppConfig:
                 raise ValueError(f"TG_API_ID env var must be an integer, got: {api_id!r}")
         if api_hash := os.getenv("TG_API_HASH"):
             data.setdefault("telegram", {})["api_hash"] = api_hash
+        if lm_token := os.getenv("LM_API_TOKEN"):
+            data.setdefault("lmstudio", {})["api_token"] = lm_token
     return AppConfig.model_validate(data)

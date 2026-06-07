@@ -12,6 +12,7 @@ lmstudio:
   model: "google/gemma-3-4b-it"
   server_host: "localhost"   # set to an IP if LM Studio runs on another machine
   server_port: 1234
+  # api_token: "lms-..."    # optional; overridden by LM_API_TOKEN env var
   temperature: 0.3
   max_tokens: 800
 
