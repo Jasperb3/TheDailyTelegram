@@ -1,7 +1,7 @@
 from __future__ import annotations
 import os
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChannelConfig(BaseModel):
@@ -51,6 +51,7 @@ class StorageConfig(BaseModel):
 
 
 class AppConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     telegram: TelegramConfig
     lmstudio: LMStudioConfig
     triage: TriageConfig = Field(default_factory=TriageConfig)
@@ -63,7 +64,10 @@ def load_config(path: str, env_override: bool = False) -> AppConfig:
         data = yaml.safe_load(f)
     if env_override:
         if api_id := os.getenv("TG_API_ID"):
-            data.setdefault("telegram", {})["api_id"] = int(api_id)
+            try:
+                data.setdefault("telegram", {})["api_id"] = int(api_id)
+            except ValueError:
+                raise ValueError(f"TG_API_ID env var must be an integer, got: {api_id!r}")
         if api_hash := os.getenv("TG_API_HASH"):
             data.setdefault("telegram", {})["api_hash"] = api_hash
     return AppConfig.model_validate(data)
