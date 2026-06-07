@@ -40,13 +40,32 @@ class PostAnalysis(BaseModel):
     reasoning: str = ""
 
 
-_ENTITY_GARBAGE = re.compile(r'[`{}<>]|json|PostAnalysis|importance_score|urgency_score')
+_ENTITY_GARBAGE = re.compile(
+    r'[`{}<>]|json|PostAnalysis|importance_score|urgency_score'
+    r'|title|summary|category|image_substantive|post_id|credibility|relevance|reasoning'
+)
 
 def _clean_entities(entities: list[str]) -> list[str]:
     return [
         e.strip() for e in entities
-        if e and len(e.strip()) <= 80 and not _ENTITY_GARBAGE.search(e)
+        if e
+        and len(e.strip()) >= 2
+        and len(e.strip()) <= 80
+        and not re.fullmatch(r'\d+', e.strip())
+        and not _ENTITY_GARBAGE.search(e)
     ]
+
+
+_TITLE_GARBAGE = re.compile(r'<\||\`\`\`|\{|\}|<image>|thought', re.IGNORECASE)
+
+def _clean_title(title: str) -> str:
+    if not title or not title.strip():
+        return ""
+    if len(title) > 120:
+        return ""
+    if _TITLE_GARBAGE.search(title):
+        return ""
+    return title
 
 
 def _clean_image_insights(text: str | None) -> str | None:
@@ -55,6 +74,15 @@ def _clean_image_insights(text: str | None) -> str | None:
     stripped = text.strip()
     if stripped.lower() in ('n/a', 'none', 'no image provided', 'no image provided.',
                              'no image.', 'no image', 'na', ''):
+        return None
+    low = stripped.lower()
+    if (
+        low.startswith('a telegram post from')
+        or low.startswith('a screenshot of a post')
+        or 'text-only announcement' in low
+        or 'text-based report' in low
+        or 'featuring a text' in low
+    ):
         return None
     if len(stripped) < 10:
         return None
@@ -114,6 +142,7 @@ def build_messages(post: PostRecord, system_prompt: str) -> list[dict]:
 
 
 def _sanitize(analysis: PostAnalysis) -> PostAnalysis:
+    analysis.title = _clean_title(analysis.title)
     analysis.key_entities = _clean_entities(analysis.key_entities)
     analysis.image_description = _clean_image_insights(analysis.image_description)
     return analysis
