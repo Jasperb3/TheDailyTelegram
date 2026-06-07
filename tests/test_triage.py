@@ -67,3 +67,13 @@ def test_briefing_content_collects_channel_names():
     result = triage(pairs, config)
     assert isinstance(result, BriefingContent)
     assert "test" in result.channel_names
+
+
+def test_keyword_boost_applies_only_once():
+    # Text matches both keywords; only one boost should be applied
+    post, analysis = make_pair(importance=2, text="breaking urgent event")
+    config = TriageConfig(keywords=["breaking", "urgent"], keyword_boost=1.0, min_composite_score=0.0)
+    result = triage([(post, analysis)], config)
+    base = 0.4 * 2 + 0.3 * 3 + 0.2 * 3 + 0.1 * 3
+    # Exactly one boost: base + 1.0
+    assert abs(result.main_items[0].composite_score - (base + 1.0)) < 0.001
