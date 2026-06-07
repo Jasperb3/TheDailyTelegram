@@ -22,6 +22,7 @@ class TelegramConfig(BaseModel):
 
 class LMStudioConfig(BaseModel):
     model: str
+    server_host: str = "localhost"
     server_port: int = 1234
     temperature: float = 0.3
     max_tokens: int = 800

@@ -88,7 +88,7 @@ class Analyzer:
 
     def _get_model(self):
         if self._model is None:
-            client = lms.Client(f"localhost:{self._cfg.lmstudio.server_port}")
+            client = lms.Client(f"{self._cfg.lmstudio.server_host}:{self._cfg.lmstudio.server_port}")
             self._model = client.llm.model(self._cfg.lmstudio.model)
         return self._model
 
@@ -111,10 +111,10 @@ class Analyzer:
                 result = await asyncio.to_thread(
                     self._get_model().respond,
                     chat,
-                    structured=PostAnalysis,
+                    response_format=PostAnalysis,
                     config=inference_config,
                 )
-                return result
+                return PostAnalysis.model_validate(result.parsed)
             except Exception as e:
                 if attempt == 2:
                     log.warning(
@@ -124,7 +124,7 @@ class Analyzer:
                     raw = await asyncio.to_thread(
                         self._get_model().respond, chat, config=inference_config
                     )
-                    return parse_analysis_fallback(str(raw))
+                    return parse_analysis_fallback(raw.content)
                 await asyncio.sleep(10 * (attempt + 1))
 
     async def process_unanalysed(
