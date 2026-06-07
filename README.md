@@ -1,6 +1,6 @@
-# TelegramCompiler
+# The Daily Telegram
 
-A local-only Telegram channel intelligence briefing system. Monitors Telegram channels, analyses posts with a locally-running Vision-Language Model via LM Studio, and generates daily ranked PDF briefings — no cloud APIs, no data leaves your machine.
+A local-only Telegram channel intelligence briefing system. Monitors Telegram channels, analyses posts with a locally-running Vision-Language Model via LM Studio, and generates daily ranked PDF briefings with an AI-synthesised intelligence front page — no cloud APIs, no data leaves your machine.
 
 ## How it works
 
@@ -10,15 +10,20 @@ Telegram channels
    scraper.py  →  SQLite (posts)
                       ↓
    analyzer.py  ←  LM Studio VLM
-   (scores each post 1–5 on importance, urgency, credibility, relevance)
+   (title, scores, category, threat_level, key entities)
                       ↓
-     triage.py  (composite score, keyword boost, main/appendix split)
+     triage.py  (composite score, keyword boost, dedup, main/appendix split)
                       ↓
-   generator.py  →  briefings/briefing_YYYY-MM-DD.pdf
+   generator.py  →  briefings/YYYY-MM-DD/TheDailyTelegram_YYYY-MM-DD-HH:MM:SS.pdf
+                      ↓
+  synthesiser.py  ←  LM Studio (intelligence synthesis)
+   (top 20 posts → situation summary, key themes, signals & warnings, named actors)
+                      ↓
+   prepends intelligence front page to briefing PDF
 ```
 
 Two operating modes:
-- **`--batch`**: one-shot run — scrape all channels, analyse everything, generate today's PDF
+- **`--batch`**: one-shot run — scrape all channels, analyse everything, generate today's PDF with intelligence front page prepended automatically
 - **`--daemon`**: long-running — listen for live messages, analyse as they arrive, generate PDF daily at a configured time
 
 ---
@@ -74,7 +79,7 @@ python -m tg_compiler.main --help
 
 Expected output:
 ```
-usage: tg_compiler [-h] [--config CONFIG] [--batch] [--daemon] [--generate] [--since TIME]
+usage: tg_compiler [-h] [--config CONFIG] [--batch] [--daemon] [--generate] [--analyse] [--since TIME]
 ```
 
 ---
@@ -178,7 +183,7 @@ After successful login, `briefing_session.session` is created and subsequent run
 
 ## Batch mode — one-shot scrape and report
 
-Batch mode scrapes all configured channels, analyses every unseen post, and generates today's PDF.
+Batch mode scrapes all configured channels, analyses every unseen post, generates today's PDF, and automatically prepends an AI-synthesised intelligence front page.
 
 ```bash
 source .venv/bin/activate
@@ -188,19 +193,23 @@ python -m tg_compiler.main --batch
 What happens:
 1. Connects to Telegram
 2. For each channel: fetches messages since the last run (up to 500), downloads attached photos
-3. Sends each new post to LM Studio for analysis (headline title, importance, urgency, credibility, relevance, category, key entities)
+3. Sends each new post to LM Studio for analysis — headline title, importance, urgency, credibility, relevance, category, threat level, and key entities
 4. Runs triage: scores posts, applies keyword boosts, deduplicates cross-channel reports of the same story, splits into main/appendix
-5. Generates `briefings/briefing_YYYY-MM-DD.pdf` and `briefings/briefing_YYYY-MM-DD.md`
-6. Disconnects
+5. Generates `briefings/YYYY-MM-DD/TheDailyTelegram_YYYY-MM-DD-HH:MM:SS.pdf`
+6. Sends the top 20 posts by composite score to LM Studio for intelligence synthesis
+7. Prepends a structured intelligence front page (situation summary, key themes, signals & warnings, named actors) to the briefing PDF
+8. Disconnects
 
-Subsequent `--batch` runs on the same day are safe — cursor tracking ensures no post is fetched twice, and UNIQUE constraints prevent duplicate DB entries.
+Subsequent `--batch` runs on the same day are safe — cursor tracking ensures no post is fetched twice, and UNIQUE constraints prevent duplicate DB entries. If LM Studio is unreachable during the front page step, a warning is logged and the briefing PDF is kept as-is.
 
 Typical log output:
 ```
-2026-06-07 09:00:01 INFO Scraped 14 new posts from news
-2026-06-07 09:00:02 INFO Scraped 3 new posts from intel
-2026-06-07 09:00:45 INFO Analysed 17 posts
-2026-06-07 09:00:46 INFO Briefing generated: briefings/briefing_2026-06-07.pdf
+2026-06-08 09:00:01 INFO Scraped 14 new posts from news
+2026-06-08 09:00:02 INFO Scraped 3 new posts from intel
+2026-06-08 09:00:45 INFO Analysed 17 posts
+2026-06-08 09:00:46 INFO Briefing generated: briefings/2026-06-08/TheDailyTelegram_2026-06-08-09:00:46.pdf
+2026-06-08 09:00:47 INFO Synthesising intelligence assessment from 17 posts…
+2026-06-08 09:01:30 INFO Intelligence front page prepended → briefings/2026-06-08/TheDailyTelegram_2026-06-08-09:00:46.pdf
 ```
 
 ### Re-scraping from a specific time — `--since`
@@ -260,12 +269,12 @@ What happens at startup:
 What happens when a new message arrives:
 1. Downloads attached media (if any)
 2. Inserts a `PostRecord` into SQLite
-3. Sends the post to LM Studio for analysis and saves the result
+3. Sends the post to LM Studio for analysis (including threat level) and saves the result
 4. Duplicate posts (by channel_id + message_id) are silently skipped
 
 What happens at `generate_at` time each day:
 1. Runs triage on all posts analysed that day
-2. Generates `briefings/briefing_YYYY-MM-DD.pdf`
+2. Generates `briefings/YYYY-MM-DD/TheDailyTelegram_YYYY-MM-DD-HH:MM:SS.pdf`
 3. Purges media directories older than `retention_days`
 
 ### Stopping the daemon
@@ -296,30 +305,47 @@ source .venv/bin/activate
 python -m tg_compiler.main --generate
 ```
 
-This reads all posts for today that have been analysed, runs triage, and writes the PDF and Markdown files to `briefings/`. Useful if you want to tweak triage settings and re-generate without waiting for a new batch.
+To prepend the intelligence front page to an existing briefing PDF (e.g. after a `--generate`):
+
+```bash
+python -m tg_compiler.main --analyse
+# or for a specific date:
+python -m tg_compiler.main --analyse --since 2026-06-07
+```
+
+`--analyse` finds the most recent `TheDailyTelegram_*.pdf` in the date subdirectory, synthesises the top 20 posts via LM Studio, and prepends the front page. Under `--batch` this runs automatically, so `--analyse` is mainly useful after a standalone `--generate`.
 
 ---
 
 ## Reading the reports
 
-Reports are written to `./briefings/` (configurable via `generation.output_dir`).
+Reports are written to date-named subdirectories under `./briefings/` (configurable via `generation.output_dir`).
 
 ```
 briefings/
-├── briefing_2026-06-07.pdf   ← primary report
-└── briefing_2026-06-07.md    ← Markdown source (always generated alongside PDF)
+└── 2026-06-08/
+    ├── TheDailyTelegram_2026-06-08-09:00:46.pdf   ← primary report (with front page)
+    └── briefing_2026-06-08.md                      ← Markdown source
 ```
+
+Each `--batch` or `--generate` run writes a new uniquely timestamped PDF. The `.md` file is the source of truth and is overwritten on each run.
 
 ### Report structure
 
-**Executive Summary** — top 10 posts across all channels, one line each with importance badge and channel attribution.
+**Intelligence Front Page** — prepended automatically. Contains:
+- *Situation Summary* — 3-5 sentence analyst overview of the day's geopolitical picture
+- *Key Themes* — 3-5 cross-cutting patterns across today's reports
+- *Signals & Warnings* — 3-5 developments to watch with observable indicators
+- *Named Actors* — 4-6 most significant actors and their activity today
+
+**Executive Summary** — top 10 posts across all channels, one line each with threat level badge, category, headline, and channel attribution.
 
 **Per-channel sections** — posts that cleared `min_composite_score`, sorted by composite score descending, capped at `max_main_items` total (excess goes to the Appendix). Cross-channel duplicates (same story reported by multiple channels within 2 hours, detected by word overlap ≥28% or ≥3 shared named entities) are deduplicated — only the highest-scoring report appears. Each entry shows:
-- Importance badge: 🔴 (composite ≥4.0) · 🟡 (≥3.5) · 🟢 (<3.5)
+- **Threat level badge**: 🔴 CRITICAL · 🟠 HIGH · 🟡 MODERATE · 🟢 LOW
+- **Category** in backtick style: `` `Breaking News` `` / `` `Analysis` `` / `` `Official Statement` `` / `` `Rumor` `` / `` `Media` `` / `` `Other` ``
 - LLM-generated headline title (5-10 words)
 - Post timestamp and direct link to the original Telegram post (↗ t.me)
 - Full summary from the VLM
-- Category (Breaking News / Analysis / Official Statement / Rumor / Media / Other)
 - Composite score out of 5
 - Key named entities
 - Image analysis excerpt (if the post had a substantive image)
@@ -328,6 +354,15 @@ briefings/
 **Appendix** — posts that scored below `min_composite_score`, listed compactly with direct Telegram links.
 
 **Statistics table** — total posts, main/appendix counts, channels covered, and a per-category breakdown.
+
+### Threat level scale
+
+| Badge | Level | Meaning |
+|---|---|---|
+| 🔴 | CRITICAL | Imminent mass casualty risk, confirmed state-level military action, nuclear/chemical/biological threat, or attack on critical infrastructure |
+| 🟠 | HIGH | Confirmed armed conflict development, significant political crisis, major terror attack, or credible escalation warning from a named senior official |
+| 🟡 | MODERATE | Ongoing conflict updates, diplomatic developments, significant arrests, or unverified but plausible escalation claims |
+| 🟢 | LOW | Background context, routine troop movement reports, unverified rumours, or historical/statistical reports |
 
 ### Composite scoring formula
 
@@ -362,6 +397,9 @@ The `TG_API_ID` environment variable is set but contains a non-integer value. Ei
 **PDF is empty or has no posts**  
 Either no posts were scraped today, or LM Studio analysis has not run yet. Run `--batch` to trigger a full scrape+analyse cycle, then check `--generate`.
 
+**Intelligence front page not prepended**  
+If LM Studio was unreachable during the synthesis step, a warning is logged and the briefing is kept as-is. Check LM Studio is running and retry with `--analyse`.
+
 **Session file issues after moving the project**  
 Delete `<session_name>.session` and re-authenticate by running `--batch` again.
 
@@ -371,7 +409,7 @@ Delete `<session_name>.session` and re-authenticate by running `--batch` again.
 
 ```bash
 source .venv/bin/activate
-pytest                          # all 43 tests
+pytest                          # all 66 tests
 pytest tests/test_db.py -v      # single file
 pytest tests/test_triage.py::test_composite_score_formula -v   # single test
 ```
