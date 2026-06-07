@@ -1,5 +1,6 @@
 from __future__ import annotations
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -24,6 +25,7 @@ class BriefingContent:
     channel_names: list[str] = field(default_factory=list)
     # slug → bare username (no @) for building t.me deep links
     channel_links: dict[str, str] = field(default_factory=dict)
+    category_counts: dict[str, int] = field(default_factory=dict)
 
 
 def _composite(a: AnalysisRecord) -> float:
@@ -47,7 +49,7 @@ def _is_duplicate(
     candidate: TriagedPost,
     kept: list[TriagedPost],
     time_window_secs: float = 7200.0,
-    threshold: float = 0.35,
+    threshold: float = 0.28,
 ) -> bool:
     for existing in kept:
         delta = abs(
@@ -59,6 +61,12 @@ def _is_duplicate(
             return True
         if candidate.analysis.title and existing.analysis.title:
             if _jaccard(candidate.analysis.title, existing.analysis.title) >= threshold:
+                return True
+        # Entity overlap: ≥3 shared named entities within time window
+        cand_entities = {e.lower() for e in candidate.analysis.key_entities}
+        exist_entities = {e.lower() for e in existing.analysis.key_entities}
+        if len(cand_entities) >= 3 and len(exist_entities) >= 3:
+            if len(cand_entities & exist_entities) >= 3:
                 return True
     return False
 
@@ -92,8 +100,16 @@ def triage(
         if not _is_duplicate(item, kept):
             kept.append(item)
 
-    main_items = [t for t in kept if t.composite_score >= config.min_composite_score]
+    main_scored = [t for t in kept if t.composite_score >= config.min_composite_score]
     appendix_items = [t for t in kept if t.composite_score < config.min_composite_score]
+    if config.max_main_items > 0:
+        appendix_items = main_scored[config.max_main_items:] + appendix_items
+        main_items = main_scored[:config.max_main_items]
+    else:
+        main_items = main_scored
+
+    all_kept = main_items + appendix_items
+    category_counts = dict(Counter(t.analysis.category for t in all_kept))
     channel_names = sorted({p.channel_name for p, _ in pairs})
 
     return BriefingContent(
@@ -101,4 +117,5 @@ def triage(
         main_items=main_items,
         appendix_items=appendix_items,
         channel_names=channel_names,
+        category_counts=category_counts,
     )

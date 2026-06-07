@@ -20,7 +20,8 @@ lmstudio:
 triage:
   keywords: ["urgent", "breaking", "launch"]
   keyword_boost: 0.5
-  min_composite_score: 2.5
+  min_composite_score: 3.5
+  max_main_items: 50
 
 generation:
   output_dir: "./briefings"

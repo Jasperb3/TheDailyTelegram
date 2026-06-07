@@ -34,6 +34,7 @@ class TriageConfig(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     keyword_boost: float = 0.5
     min_composite_score: float = 2.5
+    max_main_items: int = 50
     categories_of_interest: list[str] = Field(
         default_factory=lambda: ["Breaking News", "Official Statement", "Analysis"]
     )

@@ -129,3 +129,53 @@ def test_dedup_ignores_outside_time_window():
     result = triage([(p1, a1), (p2, a2)], config)
     total = len(result.main_items) + len(result.appendix_items)
     assert total == 2
+
+
+def test_max_main_items_cap():
+    # 10 high-score posts with dissimilar summaries, max_main_items=3 → 3 in main, 7 in appendix
+    summaries = [
+        "Airstrikes hit Beirut overnight causing significant damage",
+        "Ceasefire negotiations collapsed after delegates walked out",
+        "President signed emergency decree expanding military powers",
+        "Floods displaced thousands across southern provinces",
+        "Opposition leader arrested on espionage charges",
+        "Oil pipeline sabotaged near border crossing",
+        "Evacuation ordered for coastal settlements ahead of storm",
+        "Diplomatic envoy expelled following spy scandal",
+        "Rebel forces captured strategic bridge over river",
+        "Parliament dissolved after vote of no confidence passed",
+    ]
+    pairs = [make_pair(importance=5, msg_id=i, summary=summaries[i]) for i in range(10)]
+    config = TriageConfig(min_composite_score=0.0, max_main_items=3)
+    result = triage(pairs, config)
+    assert len(result.main_items) == 3
+    assert len(result.appendix_items) == 7
+
+
+def test_category_counts_populated():
+    pairs = [
+        make_pair(msg_id=1, summary="Breaking event in the northern region", category="Breaking News"),
+        make_pair(msg_id=2, summary="Analysis of the diplomatic situation", category="Analysis"),
+        make_pair(msg_id=3, summary="Official statement from government sources", category="Breaking News"),
+    ]
+    config = TriageConfig(min_composite_score=0.0)
+    result = triage(pairs, config)
+    assert result.category_counts["Breaking News"] == 2
+    assert result.category_counts["Analysis"] == 1
+
+
+def test_dedup_entity_overlap():
+    # Same entities, same time window → duplicate
+    base_ts = datetime(2026, 6, 7, 12, 0, tzinfo=timezone.utc)
+    p1, a1 = make_pair(importance=5, msg_id=1,
+                       summary="Unrelated text here with no word overlap whatsoever",
+                       timestamp=base_ts)
+    a1.key_entities = ["Israel", "Beirut", "Hezbollah", "Lebanon", "IDF"]
+    p2, a2 = make_pair(importance=3, msg_id=2,
+                       summary="Completely different phrasing and words in this one",
+                       timestamp=base_ts + timedelta(minutes=45))
+    a2.key_entities = ["Israel", "Beirut", "Hezbollah", "Lebanon", "strikes"]
+    config = TriageConfig(min_composite_score=0.0)
+    result = triage([(p1, a1), (p2, a2)], config)
+    total = len(result.main_items) + len(result.appendix_items)
+    assert total == 1
