@@ -1,0 +1,30 @@
+telegram:
+  api_id: 123456
+  api_hash: "your_api_hash"
+  session_name: "briefing_session"
+  channels:
+    - username: "@news_channel"
+      slug: "news"
+      priority: 1.0
+  rate_limit_delay_ms: 500
+
+lmstudio:
+  model: "google/gemma-3-4b-it"
+  server_port: 1234
+  temperature: 0.3
+  max_tokens: 800
+
+triage:
+  keywords: ["urgent", "breaking", "launch"]
+  keyword_boost: 0.5
+  min_composite_score: 2.5
+
+generation:
+  output_dir: "./briefings"
+  timezone: "UTC"
+  generate_at: "23:59"
+
+storage:
+  db_path: "./data/briefing.db"
+  media_dir: "./data/media"
+  retention_days: 30
