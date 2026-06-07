@@ -10,3 +10,7 @@ dist/
 *.egg-info/
 .pytest_cache/
 config.yaml
+docs/
+issues/
+CLAUDE.md
+
