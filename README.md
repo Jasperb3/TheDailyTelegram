@@ -99,21 +99,23 @@ telegram:
   channels:
     - username: "@channelname"   # public @username, or use id: 123456789 for private
       slug: "news"               # short identifier used in file paths and reports
-      priority: 1.0
+      priority: 0.8
     - username: "@another_channel"
       slug: "intel"
-      priority: 1.0
-  rate_limit_delay_ms: 500   # pause between channel scrapes (be conservative)
+      priority: 0.8
+  rate_limit_delay_ms: 500      # pause between channel scrapes (be conservative)
+  lookback_seconds: 43200       # how far back to scrape on first run (43200 = 12 hours)
+                                # use --batch --since HH:MM for a one-off lookback instead
 
 lmstudio:
-  model: "google/gemma-3-4b-it"   # must match the model name shown in LM Studio
-  server_host: "localhost"         # IP or hostname if LM Studio is on another machine
+  model: "google/gemma-4-12b"   # must match the model name shown in LM Studio
+  server_host: "localhost"       # IP or hostname if LM Studio is on another machine
   server_port: 1234
   temperature: 0.3
   max_tokens: 800
 
 triage:
-  keywords: ["urgent", "breaking", "attack", "launch"]  # words that boost post score
+  keywords: ["urgent", "breaking", "launch"]  # words that boost post score
   keyword_boost: 0.5        # added to composite score when a keyword matches
   min_composite_score: 2.5  # posts below this go to the Appendix section
 
