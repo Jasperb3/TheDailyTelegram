@@ -56,4 +56,6 @@ def test_build_chat_truncates_long_text(sample_post):
     sample_post.text = "x" * 5000
     sample_post.media_paths = []
     chat = build_chat_for_post(sample_post, system_prompt="You are an analyst.")
-    assert chat is not None
+    user_msg = next(m for m in chat._messages if m.role == "user")
+    full_text = "".join(part.text for part in user_msg.content if hasattr(part, "text"))
+    assert full_text.count("x") == 3000
