@@ -215,13 +215,25 @@ python -m tg_compiler.main --batch --since 2026-06-01
 python -m tg_compiler.main --batch --since 2026-06-07T06:00
 ```
 
-Accepted formats: `HH:MM` (today at that UTC time), `YYYY-MM-DD` (midnight on that date), `YYYY-MM-DDTHH:MM` (exact UTC datetime). Already-seen posts are skipped via UNIQUE constraints so re-running is safe.
+Accepted formats: `HH:MM` (today at that UTC time), `YYYY-MM-DD` (midnight on that date), `YYYY-MM-DDTHH:MM` (exact UTC datetime).
+
+**`--since` resets channel cursors** so the scraper re-fetches from Telegram. Already-seen posts hit the `UNIQUE(channel_id, message_id)` constraint and are silently discarded — no duplicate DB entries. Already-analysed posts are skipped by `get_unanalysed_posts()` — no LLM calls are wasted. The downside is Telegram still has to serve those message pages, which wastes API quota.
+
+> **Use `--since` only when you intentionally need a historical lookback.** For routine same-day re-runs, use plain `--batch` — it uses the cursor and fetches only messages that arrived since the last run.
 
 ---
 
 ## Daemon mode — live monitoring
 
 Daemon mode runs indefinitely, listening for new messages in real time and generating a PDF automatically at the configured `generate_at` time each day.
+
+> **Important:** The daemon is a live listener only. It processes messages that arrive while it is running — it does **not** backfill historical posts. Always run `--batch` first to catch up on any posts you want in the briefing, then start the daemon.
+
+```bash
+# Recommended startup sequence:
+python -m tg_compiler.main --batch   # catch up on history first
+python -m tg_compiler.main --daemon  # then switch to live monitoring
+```
 
 ### Start LM Studio first
 
