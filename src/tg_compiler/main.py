@@ -45,6 +45,11 @@ async def run_batch(config: AppConfig) -> None:
 
     pairs = db.get_days_posts_with_analyses(today.isoformat())
     content = do_triage(pairs, config.triage, today=today)
+    content.channel_links = {
+        ch.slug: ch.username.lstrip("@")
+        for ch in config.telegram.channels
+        if ch.username
+    }
     path = generate_briefing(content, config.generation.output_dir, pdf=True)
     log.info("Briefing generated: %s", path)
 
@@ -84,6 +89,11 @@ async def schedule_daily_generation(config: AppConfig) -> None:
         db.init_schema()
         pairs = db.get_days_posts_with_analyses(today.isoformat())
         content = do_triage(pairs, config.triage, today=today)
+        content.channel_links = {
+            ch.slug: ch.username.lstrip("@")
+            for ch in config.telegram.channels
+            if ch.username
+        }
         generate_briefing(content, config.generation.output_dir, pdf=True)
 
         removed = purge_old_media(config.storage.media_dir, config.storage.retention_days)
@@ -206,6 +216,11 @@ def main() -> None:
         today = date.today()
         pairs = db.get_days_posts_with_analyses(today.isoformat())
         content = do_triage(pairs, cfg.triage, today=today)
+        content.channel_links = {
+            ch.slug: ch.username.lstrip("@")
+            for ch in cfg.telegram.channels
+            if ch.username
+        }
         out = generate_briefing(content, cfg.generation.output_dir, pdf=True)
         print(f"Generated: {out}")
 

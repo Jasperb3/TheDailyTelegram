@@ -3,7 +3,8 @@
 ## Executive Summary
 
 {% for item in content.main_items[:10] %}
-- {{ importance_badge(item.composite_score) }} **{{ item.analysis.category }}** — {{ item.analysis.summary }} _({{ item.post.channel_name }}, {{ item.post.timestamp.strftime('%H:%M UTC') }})_
+{% set username = content.channel_links.get(item.post.channel_name, '') %}
+- {{ importance_badge(item.composite_score) }} **{{ item.analysis.category }}** — {{ item.analysis.summary }} _({{ item.post.channel_name }}, {{ item.post.timestamp.strftime('%H:%M UTC') }}{% if username %}, [↗ t.me](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %})_
 {% else %}
 _No high-priority items today._
 {% endfor %}
@@ -11,10 +12,12 @@ _No high-priority items today._
 {% for channel in content.channel_names %}
 ## Channel: {{ channel }}
 
+{% set username = content.channel_links.get(channel, '') %}
+
 {% for item in content.main_items if item.post.channel_name == channel %}
 ### {{ importance_badge(item.composite_score) }} {{ item.analysis.title if item.analysis.title else item.analysis.summary[:90] ~ ('…' if item.analysis.summary|length > 90 else '') }}
 
-<small>{{ item.post.timestamp.strftime('%H:%M UTC') }} · {{ item.analysis.category }} · Score {{ "%.1f"|format(item.composite_score) }}/5 · ID {{ item.post.message_id }}</small>
+<small>{{ item.post.timestamp.strftime('%H:%M UTC') }} · {{ item.analysis.category }} · Score {{ "%.1f"|format(item.composite_score) }}/5 · ID {{ item.post.message_id }}{% if username %} · [↗ t.me](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %}</small>
 
 {{ item.analysis.summary }}
 
@@ -41,7 +44,8 @@ _No posts above threshold for this channel._
 ## Appendix — Lower Priority Items
 
 {% for item in content.appendix_items %}
-- **{{ item.post.channel_name }}** · {{ item.post.timestamp.strftime('%H:%M UTC') }} · {{ item.analysis.category }} · {{ item.analysis.summary[:100] }}{% if item.analysis.summary|length > 100 %}…{% endif %} _(score: {{ "%.1f"|format(item.composite_score) }})_
+{% set username = content.channel_links.get(item.post.channel_name, '') %}
+- **{{ item.post.channel_name }}** · {{ item.post.timestamp.strftime('%H:%M UTC') }} · {{ item.analysis.category }} · {{ item.analysis.summary[:100] }}{% if item.analysis.summary|length > 100 %}…{% endif %} _(score: {{ "%.1f"|format(item.composite_score) }}{% if username %}, [↗](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %})_
 {% endfor %}
 {% endif %}
 

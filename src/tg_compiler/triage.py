@@ -1,9 +1,12 @@
 from __future__ import annotations
+import re
 from dataclasses import dataclass, field
 from datetime import date
 
 from tg_compiler.config import TriageConfig
 from tg_compiler.db import PostRecord, AnalysisRecord
+
+_NON_WORD = re.compile(r'[^\w\s]')
 
 
 @dataclass
@@ -19,6 +22,8 @@ class BriefingContent:
     main_items: list[TriagedPost]
     appendix_items: list[TriagedPost]
     channel_names: list[str] = field(default_factory=list)
+    # slug → bare username (no @) for building t.me deep links
+    channel_links: dict[str, str] = field(default_factory=dict)
 
 
 def _composite(a: AnalysisRecord) -> float:
@@ -28,6 +33,34 @@ def _composite(a: AnalysisRecord) -> float:
         + 0.2 * a.credibility_score
         + 0.1 * a.relevance_score
     )
+
+
+def _jaccard(a: str, b: str, min_len: int = 3) -> float:
+    words_a = {w for w in _NON_WORD.sub('', a.lower()).split() if len(w) >= min_len}
+    words_b = {w for w in _NON_WORD.sub('', b.lower()).split() if len(w) >= min_len}
+    if not words_a or not words_b:
+        return 0.0
+    return len(words_a & words_b) / len(words_a | words_b)
+
+
+def _is_duplicate(
+    candidate: TriagedPost,
+    kept: list[TriagedPost],
+    time_window_secs: float = 7200.0,
+    threshold: float = 0.35,
+) -> bool:
+    for existing in kept:
+        delta = abs(
+            (candidate.post.timestamp - existing.post.timestamp).total_seconds()
+        )
+        if delta > time_window_secs:
+            continue
+        if _jaccard(candidate.analysis.summary, existing.analysis.summary) >= threshold:
+            return True
+        if candidate.analysis.title and existing.analysis.title:
+            if _jaccard(candidate.analysis.title, existing.analysis.title) >= threshold:
+                return True
+    return False
 
 
 def triage(
@@ -51,8 +84,16 @@ def triage(
 
     scored.sort(key=lambda t: (-t.composite_score, -t.post.timestamp.timestamp()))
 
-    main_items = [t for t in scored if t.composite_score >= config.min_composite_score]
-    appendix_items = [t for t in scored if t.composite_score < config.min_composite_score]
+    # Deduplicate: keep highest-scoring report per story cluster.
+    # Two posts are duplicates if they share ≥35% words in summary/title
+    # AND are within a 2-hour window.
+    kept: list[TriagedPost] = []
+    for item in scored:
+        if not _is_duplicate(item, kept):
+            kept.append(item)
+
+    main_items = [t for t in kept if t.composite_score >= config.min_composite_score]
+    appendix_items = [t for t in kept if t.composite_score < config.min_composite_score]
     channel_names = sorted({p.channel_name for p, _ in pairs})
 
     return BriefingContent(
