@@ -45,7 +45,7 @@ _No posts above threshold for this channel._
 
 {% for item in content.appendix_items %}
 {% set username = content.channel_links.get(item.post.channel_name, '') %}
-- **{{ item.post.channel_name }}** · {{ item.post.timestamp.strftime('%H:%M UTC') }} · {{ item.analysis.category }} · {{ item.analysis.summary[:100] }}{% if item.analysis.summary|length > 100 %}…{% endif %} _(score: {{ "%.1f"|format(item.composite_score) }}{% if username %}, [↗](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %})_
+- **{{ item.post.channel_name }}** · {{ item.post.timestamp.strftime('%H:%M UTC') }} · {{ item.analysis.category }} · {{ item.analysis.summary }} _(score: {{ "%.1f"|format(item.composite_score) }}{% if username %}, [↗](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %})_
 {% endfor %}
 {% endif %}
 
