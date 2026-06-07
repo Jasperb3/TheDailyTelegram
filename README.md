@@ -74,7 +74,7 @@ python -m tg_compiler.main --help
 
 Expected output:
 ```
-usage: tg_compiler [-h] [--config CONFIG] [--batch] [--daemon] [--generate]
+usage: tg_compiler [-h] [--config CONFIG] [--batch] [--daemon] [--generate] [--since TIME]
 ```
 
 ---
@@ -185,8 +185,8 @@ python -m tg_compiler.main --batch
 What happens:
 1. Connects to Telegram
 2. For each channel: fetches messages since the last run (up to 500), downloads attached photos
-3. Sends each new post to LM Studio for analysis (importance, urgency, credibility, relevance, category, key entities)
-4. Runs triage: scores posts, applies keyword boosts, splits into main/appendix
+3. Sends each new post to LM Studio for analysis (headline title, importance, urgency, credibility, relevance, category, key entities)
+4. Runs triage: scores posts, applies keyword boosts, deduplicates cross-channel reports of the same story, splits into main/appendix
 5. Generates `briefings/briefing_YYYY-MM-DD.pdf` and `briefings/briefing_YYYY-MM-DD.md`
 6. Disconnects
 
@@ -199,6 +199,23 @@ Typical log output:
 2026-06-07 09:00:45 INFO Analysed 17 posts
 2026-06-07 09:00:46 INFO Briefing generated: briefings/briefing_2026-06-07.pdf
 ```
+
+### Re-scraping from a specific time — `--since`
+
+To fetch posts from a point further back than the last run, use `--since`. This automatically resets channel cursors and sets the lookback window — no manual config edits needed.
+
+```bash
+# Re-scrape from midnight UTC today
+python -m tg_compiler.main --batch --since 00:00
+
+# Re-scrape from the start of a specific date
+python -m tg_compiler.main --batch --since 2026-06-01
+
+# Re-scrape from a specific date and time
+python -m tg_compiler.main --batch --since 2026-06-07T06:00
+```
+
+Accepted formats: `HH:MM` (today at that UTC time), `YYYY-MM-DD` (midnight on that date), `YYYY-MM-DDTHH:MM` (exact UTC datetime). Already-seen posts are skipped via UNIQUE constraints so re-running is safe.
 
 ---
 
@@ -282,17 +299,18 @@ briefings/
 
 **Executive Summary** — top 10 posts across all channels, one line each with importance badge and channel attribution.
 
-**Per-channel sections** — posts that cleared `min_composite_score`, sorted by composite score descending. Each entry shows:
-- Importance badge: 🔴 (score ≥4) · 🟡 (≥3) · 🟢 (<3)
-- Post timestamp
-- Summary from the VLM
+**Per-channel sections** — posts that cleared `min_composite_score`, sorted by composite score descending. Cross-channel duplicates (same story reported by multiple channels within 2 hours) are deduplicated — only the highest-scoring report appears. Each entry shows:
+- Importance badge: 🔴 (composite ≥4.0) · 🟡 (≥3.5) · 🟢 (<3.5)
+- LLM-generated headline title (5-10 words)
+- Post timestamp and direct link to the original Telegram post (↗ t.me)
+- Full summary from the VLM
 - Category (Breaking News / Analysis / Official Statement / Rumor / Media / Other)
 - Composite score out of 5
 - Key named entities
 - Image analysis excerpt (if the post had a substantive image)
 - Attached images (up to 3, embedded in PDF)
 
-**Appendix** — posts that scored below `min_composite_score`, listed compactly.
+**Appendix** — posts that scored below `min_composite_score`, listed compactly with direct Telegram links.
 
 **Statistics table** — total posts, main/appendix counts, channels covered.
 
@@ -311,8 +329,8 @@ Each dimension is rated 1–5 by the VLM. A post with all 5s scores 5.0. Keyword
 **"No module named tg_compiler"**  
 The virtual environment is not active. Run `source .venv/bin/activate` first.
 
-**"LM Studio is not reachable at ws://..."**  
-LM Studio server is not running, or `server_host`/`server_port` in `config.yaml` don't match. Start it via LM Studio → Local Server → Start Server. If LM Studio runs on another machine, set `lmstudio.server_host` to its IP address.
+**"LM Studio is not reachable" / connection refused on port 1234**  
+LM Studio server is not running, or `server_host`/`server_port` in `config.yaml` don't match. Start it via LM Studio → Local Server → Start Server. If LM Studio runs on another machine, set `lmstudio.server_host` to its IP address. The app uses LM Studio's OpenAI-compatible HTTP endpoint (`/v1/chat/completions`) — ensure "Enable API server" is on.
 
 **"ChannelPrivateError"**  
 Your Telegram account is not a member of that channel. Join it in the Telegram app and retry.
@@ -338,7 +356,7 @@ Delete `<session_name>.session` and re-authenticate by running `--batch` again.
 
 ```bash
 source .venv/bin/activate
-pytest                          # all 36 tests
+pytest                          # all 40 tests
 pytest tests/test_db.py -v      # single file
 pytest tests/test_triage.py::test_composite_score_formula -v   # single test
 ```
