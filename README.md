@@ -107,6 +107,7 @@ telegram:
 
 lmstudio:
   model: "google/gemma-3-4b-it"   # must match the model name shown in LM Studio
+  server_host: "localhost"         # IP or hostname if LM Studio is on another machine
   server_port: 1234
   temperature: 0.3
   max_tokens: 800
@@ -127,16 +128,25 @@ storage:
   retention_days: 30          # delete media older than this many days
 ```
 
-### Optional — environment variable override
+### Step 3 — Set up your `.env` file
 
-Instead of putting credentials in config.yaml, you can use environment variables:
+The app loads `.env` automatically at startup. Copy the example and fill in your values:
 
 ```bash
-export TG_API_ID=123456
-export TG_API_HASH=your_api_hash_here
+cp .env.example .env
 ```
 
-These override `telegram.api_id` and `telegram.api_hash` in the YAML when you run with any command.
+Edit `.env`:
+
+```bash
+TG_API_ID=123456              # overrides telegram.api_id in config.yaml
+TG_API_HASH=your_api_hash     # overrides telegram.api_hash in config.yaml
+LM_API_TOKEN=lms-your-token   # required if LM Studio has authentication enabled
+```
+
+`TG_API_ID` and `TG_API_HASH` override the corresponding YAML fields. `LM_API_TOKEN` is only needed if you have enabled API token authentication in LM Studio's settings.
+
+If LM Studio is on a different machine, set `server_host` in `config.yaml` to its IP address (e.g. `192.168.1.96`).
 
 ---
 
@@ -301,8 +311,8 @@ Each dimension is rated 1–5 by the VLM. A post with all 5s scores 5.0. Keyword
 **"No module named tg_compiler"**  
 The virtual environment is not active. Run `source .venv/bin/activate` first.
 
-**"LM Studio connection refused"**  
-LM Studio server is not running, or is on a different port. Start it via LM Studio → Local Server → Start Server. Check `lmstudio.server_port` in `config.yaml` matches.
+**"LM Studio is not reachable at ws://..."**  
+LM Studio server is not running, or `server_host`/`server_port` in `config.yaml` don't match. Start it via LM Studio → Local Server → Start Server. If LM Studio runs on another machine, set `lmstudio.server_host` to its IP address.
 
 **"ChannelPrivateError"**  
 Your Telegram account is not a member of that channel. Join it in the Telegram app and retry.
