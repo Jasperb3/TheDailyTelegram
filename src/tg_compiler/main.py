@@ -10,7 +10,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
-from tg_compiler.config import load_config, AppConfig
+from tg_compiler.config import load_config, AppConfig, ChannelConfig
 from tg_compiler.db import Database, PostRecord
 from tg_compiler.scraper import Scraper
 
@@ -103,69 +103,77 @@ async def run_daemon(config: AppConfig) -> None:
         config.telegram.api_hash,
     )
     await client.start()
+    try:
+        channel_entities = []
+        channel_cfg_by_id: dict[int, ChannelConfig] = {}
+        for ch in config.telegram.channels:
+            identifier = ch.username or ch.id
+            if not identifier:
+                raise ValueError(f"Channel config has neither username nor id: {ch!r}")
+            entity = await client.get_entity(identifier)
+            channel_entities.append(entity)
+            channel_cfg_by_id[entity.id] = ch
 
-    channel_entities = []
-    channel_cfg_by_id: dict[int, object] = {}
-    for ch in config.telegram.channels:
-        entity = await client.get_entity(ch.username or ch.id)
-        channel_entities.append(entity)
-        channel_cfg_by_id[entity.id] = ch
+        @client.on(events.NewMessage(chats=channel_entities))
+        async def handle_new_message(event):
+            msg = event.message
+            channel_id = event.chat_id
+            channel_cfg = channel_cfg_by_id.get(channel_id)
+            if channel_cfg is None:
+                log.warning("Received message from unmapped channel %s — skipping", channel_id)
+                return
+            text = msg.text or msg.caption or ""
+            ts = msg.date
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
 
-    @client.on(events.NewMessage(chats=channel_entities))
-    async def handle_new_message(event):
-        msg = event.message
-        channel_id = event.chat_id
-        channel_cfg = channel_cfg_by_id.get(channel_id, config.telegram.channels[0])
-        text = msg.text or msg.caption or ""
-        ts = msg.date
-        if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
+            media_paths: list[str] = []
+            if msg.photo:
+                dest = media_path_for(
+                    config.storage.media_dir, channel_cfg.slug,
+                    ts.strftime("%Y-%m-%d"), msg.id, "jpg",
+                )
+                try:
+                    await client.download_media(msg, file=dest)
+                    media_paths.append(dest)
+                except Exception as e:
+                    log.warning("Daemon: media download failed for %s: %s", msg.id, e)
 
-        media_paths: list[str] = []
-        if msg.photo:
-            dest = media_path_for(
-                config.storage.media_dir, channel_cfg.slug,
-                ts.strftime("%Y-%m-%d"), msg.id, "jpg",
+            record = PostRecord(
+                channel_id=channel_id,
+                channel_name=channel_cfg.slug,
+                message_id=msg.id,
+                timestamp=ts,
+                text=text,
+                media_paths=media_paths,
+                has_images=bool(media_paths),
+                raw_json="{}",
             )
-            try:
-                await client.download_media(msg, file=dest)
-                media_paths.append(dest)
-            except Exception as e:
-                log.warning("Daemon: media download failed for %s: %s", msg.id, e)
+            post_id = db.insert_post(record)
+            if post_id is not None:
+                record.id = post_id
+                try:
+                    analysis = await analyzer.analyze_post(record, channel_cfg)
+                    db.insert_analysis(AnalysisRecord(
+                        post_id=post_id,
+                        summary=analysis.summary,
+                        importance_score=analysis.importance_score,
+                        urgency_score=analysis.urgency_score,
+                        credibility_score=analysis.credibility_score,
+                        relevance_score=analysis.relevance_score,
+                        category=analysis.category,
+                        key_entities=analysis.key_entities,
+                        image_insights=analysis.image_description,
+                        model_used=config.lmstudio.model,
+                    ))
+                except Exception as e:
+                    log.error("Analysis failed for post %s: %s", msg.id, e)
 
-        record = PostRecord(
-            channel_id=channel_id,
-            channel_name=channel_cfg.slug,
-            message_id=msg.id,
-            timestamp=ts,
-            text=text,
-            media_paths=media_paths,
-            has_images=bool(media_paths),
-            raw_json="{}",
-        )
-        post_id = db.insert_post(record)
-        if post_id is not None:
-            record.id = post_id
-            try:
-                analysis = await analyzer.analyze_post(record, channel_cfg)
-                db.insert_analysis(AnalysisRecord(
-                    post_id=post_id,
-                    summary=analysis.summary,
-                    importance_score=analysis.importance_score,
-                    urgency_score=analysis.urgency_score,
-                    credibility_score=analysis.credibility_score,
-                    relevance_score=analysis.relevance_score,
-                    category=analysis.category,
-                    key_entities=analysis.key_entities,
-                    image_insights=analysis.image_description,
-                    model_used=config.lmstudio.model,
-                ))
-            except Exception as e:
-                log.error("Analysis failed for post %s: %s", msg.id, e)
-
-    asyncio.ensure_future(schedule_daily_generation(config))
-    log.info("Daemon running on %d channels", len(channel_entities))
-    await client.run_until_disconnected()
+        asyncio.create_task(schedule_daily_generation(config))
+        log.info("Daemon running on %d channels", len(channel_entities))
+        await client.run_until_disconnected()
+    finally:
+        await client.disconnect()
 
 
 def main() -> None:
