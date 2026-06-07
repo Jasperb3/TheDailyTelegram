@@ -117,7 +117,8 @@ lmstudio:
 triage:
   keywords: ["urgent", "breaking", "launch"]  # words that boost post score
   keyword_boost: 0.5        # added to composite score when a keyword matches
-  min_composite_score: 2.5  # posts below this go to the Appendix section
+  min_composite_score: 3.5  # posts below this go to the Appendix section
+  max_main_items: 50        # hard cap on main briefing length (overflow → appendix)
 
 generation:
   output_dir: "./briefings"   # where PDFs are saved
@@ -313,7 +314,7 @@ briefings/
 
 **Executive Summary** — top 10 posts across all channels, one line each with importance badge and channel attribution.
 
-**Per-channel sections** — posts that cleared `min_composite_score`, sorted by composite score descending. Cross-channel duplicates (same story reported by multiple channels within 2 hours) are deduplicated — only the highest-scoring report appears. Each entry shows:
+**Per-channel sections** — posts that cleared `min_composite_score`, sorted by composite score descending, capped at `max_main_items` total (excess goes to the Appendix). Cross-channel duplicates (same story reported by multiple channels within 2 hours, detected by word overlap ≥28% or ≥3 shared named entities) are deduplicated — only the highest-scoring report appears. Each entry shows:
 - Importance badge: 🔴 (composite ≥4.0) · 🟡 (≥3.5) · 🟢 (<3.5)
 - LLM-generated headline title (5-10 words)
 - Post timestamp and direct link to the original Telegram post (↗ t.me)
@@ -326,7 +327,7 @@ briefings/
 
 **Appendix** — posts that scored below `min_composite_score`, listed compactly with direct Telegram links.
 
-**Statistics table** — total posts, main/appendix counts, channels covered.
+**Statistics table** — total posts, main/appendix counts, channels covered, and a per-category breakdown.
 
 ### Composite scoring formula
 
@@ -370,7 +371,7 @@ Delete `<session_name>.session` and re-authenticate by running `--batch` again.
 
 ```bash
 source .venv/bin/activate
-pytest                          # all 40 tests
+pytest                          # all 43 tests
 pytest tests/test_db.py -v      # single file
 pytest tests/test_triage.py::test_composite_score_formula -v   # single test
 ```
