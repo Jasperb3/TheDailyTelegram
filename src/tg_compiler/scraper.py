@@ -61,6 +61,7 @@ class Scraper:
                     continue
                 text = msg.text or ""
                 media_paths: list[str] = []
+                has_video = bool(msg.video or msg.gif)
 
                 if msg.photo:
                     date_str = msg.date.strftime("%Y-%m-%d")
@@ -94,6 +95,7 @@ class Scraper:
                     text=text,
                     media_paths=media_paths,
                     has_images=bool(media_paths),
+                    has_video=has_video,
                     raw_json=json.dumps({"id": msg.id, "text": text}),
                 )
                 post_id = self._db.insert_post(record)

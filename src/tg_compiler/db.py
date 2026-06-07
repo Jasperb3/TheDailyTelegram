@@ -16,6 +16,7 @@ class PostRecord:
     has_images: bool
     raw_json: str
     id: int | None = None
+    has_video: bool = False
 
 
 @dataclass
@@ -50,6 +51,7 @@ class Database:
                 text TEXT,
                 media_paths TEXT,
                 has_images BOOLEAN,
+                has_video BOOLEAN DEFAULT 0,
                 raw_json TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(channel_id, message_id)
@@ -82,17 +84,22 @@ class Database:
             self._conn.commit()
         except Exception:
             pass  # column already exists
+        try:
+            self._conn.execute("ALTER TABLE posts ADD COLUMN has_video BOOLEAN DEFAULT 0")
+            self._conn.commit()
+        except Exception:
+            pass  # column already exists
 
     def insert_post(self, post: PostRecord) -> int | None:
         try:
             cur = self._conn.execute(
                 """INSERT INTO posts
                    (channel_id, channel_name, message_id, timestamp, text,
-                    media_paths, has_images, raw_json)
-                   VALUES (?,?,?,?,?,?,?,?)""",
+                    media_paths, has_images, has_video, raw_json)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
                 (post.channel_id, post.channel_name, post.message_id,
                  post.timestamp.isoformat(), post.text,
-                 json.dumps(post.media_paths), post.has_images, post.raw_json),
+                 json.dumps(post.media_paths), post.has_images, post.has_video, post.raw_json),
             )
             self._conn.commit()
             return cur.lastrowid
@@ -189,5 +196,6 @@ def _row_to_post(row: sqlite3.Row) -> PostRecord:
         text=row["text"] or "",
         media_paths=json.loads(row["media_paths"] or "[]"),
         has_images=bool(row["has_images"]),
+        has_video=bool(row["has_video"]),
         raw_json=row["raw_json"] or "{}",
     )

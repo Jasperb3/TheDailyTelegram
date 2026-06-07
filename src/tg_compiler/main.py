@@ -141,6 +141,7 @@ async def run_daemon(config: AppConfig) -> None:
                 ts = ts.replace(tzinfo=timezone.utc)
 
             media_paths: list[str] = []
+            has_video = bool(msg.video or msg.gif)
             if msg.photo:
                 dest = media_path_for(
                     config.storage.media_dir, channel_cfg.slug,
@@ -160,6 +161,7 @@ async def run_daemon(config: AppConfig) -> None:
                 text=text,
                 media_paths=media_paths,
                 has_images=bool(media_paths),
+                has_video=has_video,
                 raw_json="{}",
             )
             post_id = db.insert_post(record)

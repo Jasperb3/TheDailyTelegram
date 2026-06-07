@@ -27,6 +27,10 @@ _No high-priority items today._
 **Image:** {{ item.analysis.image_insights }}
 {% endif %}
 
+{% if item.post.has_video %}
+**Video:** _[▶ Watch on Telegram](https://t.me/{{ username }}/{{ item.post.message_id }})_
+{% endif %}
+
 {% if item.post.media_paths %}
 {% for img in item.post.media_paths[:3] %}
 ![]({{ img }})
