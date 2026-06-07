@@ -1,15 +1,55 @@
-# Daily Briefing — {{ date }}
+# Daily Intelligence Briefing — {{ content.date }}
 
-{% for channel_name, posts in channels.items() %}
-## Channel: {{ channel_name }}
+## Executive Summary
 
-{% for post in posts %}
-### Post {{ post.message_id }} — {{ post.timestamp.strftime('%H:%M UTC') }}
+{% for item in content.main_items[:10] %}
+- {{ importance_badge(item.analysis.importance_score) }} **{{ item.analysis.category }}** — {{ item.analysis.summary }} _({{ item.post.channel_name }})_
+{% else %}
+_No high-priority items today._
+{% endfor %}
 
-{{ post.text or "_No text_" }}
+{% for channel in content.channel_names %}
+## Channel: {{ channel }}
+
+{% for item in content.main_items if item.post.channel_name == channel %}
+### {{ importance_badge(item.analysis.importance_score) }} Post {{ item.post.message_id }} — {{ item.post.timestamp.strftime('%H:%M UTC') }}
+
+**Summary:** {{ item.analysis.summary }}
+
+**Category:** {{ item.analysis.category }} | **Score:** {{ "%.1f"|format(item.composite_score) }}/5
+
+**Entities:** {{ item.analysis.key_entities | join(', ') or '_none_' }}
+
+{% if item.analysis.image_insights %}
+**Image:** {{ item.analysis.image_insights }}
+{% endif %}
+
+{% if item.post.media_paths %}
+{% for img in item.post.media_paths[:3] %}
+![Attached image]({{ img }})
+{% endfor %}
+{% endif %}
 
 ---
-{% endfor %}
+{% else %}
+_No posts above threshold for this channel._
 {% endfor %}
 
-_{{ total }} posts ingested._
+{% endfor %}
+
+{% if content.appendix_items %}
+## Appendix — Lower Priority Items
+
+{% for item in content.appendix_items %}
+- **{{ item.post.channel_name }}** / Post {{ item.post.message_id }}: {{ item.analysis.summary }} _(score: {{ "%.1f"|format(item.composite_score) }})_
+{% endfor %}
+{% endif %}
+
+## Statistics
+
+| Metric | Value |
+|--------|-------|
+| Total posts | {{ content.main_items|length + content.appendix_items|length }} |
+| Main briefing | {{ content.main_items|length }} |
+| Appendix | {{ content.appendix_items|length }} |
+| Channels | {{ content.channel_names | join(', ') or '—' }} |
