@@ -1,10 +1,12 @@
 from __future__ import annotations
 import asyncio
+import base64
 import logging
 import re
+from pathlib import Path
 from typing import Optional
 
-import lmstudio as lms
+from openai import OpenAI
 from pydantic import BaseModel, Field
 
 from tg_compiler.config import AppConfig, ChannelConfig
@@ -60,46 +62,81 @@ def parse_analysis_fallback(raw: str) -> PostAnalysis:
     )
 
 
-def build_chat_for_post(
-    post: PostRecord, system_prompt: str, client: "lms.Client | None" = None
-) -> lms.Chat:
-    chat = lms.Chat(system_prompt)
+def _encode_image(path: str) -> str | None:
+    try:
+        data = Path(path).read_bytes()
+        return base64.b64encode(data).decode()
+    except Exception as e:
+        log.warning("Could not read image %s: %s", path, e)
+        return None
+
+
+def build_messages(post: PostRecord, system_prompt: str) -> list[dict]:
     text = post.text[:3000] if len(post.text) > 3000 else post.text
     header = f"Post from {post.channel_name} at {post.timestamp.isoformat()}:\n\n{text}"
 
-    image_handles = []
-    prepare = client.prepare_image if client is not None else lms.prepare_image
+    content: list[dict] = [{"type": "text", "text": header}]
     for path in post.media_paths[:3]:
-        try:
-            image_handles.append(prepare(path))
-        except Exception as e:
-            log.warning("Could not prepare image %s: %s", path, e)
+        b64 = _encode_image(path)
+        if b64:
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+            })
 
-    if image_handles:
-        chat.add_user_message(header, images=image_handles)
-    else:
-        chat.add_user_message(header)
-
-    return chat
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": content},
+    ]
 
 
 class Analyzer:
     def __init__(self, config: AppConfig, db: Database):
         self._cfg = config
         self._db = db
-        self._client: lms.Client | None = None
-        self._model = None
+        self._client: OpenAI | None = None
 
-    def _get_client(self) -> lms.Client:
+    def _get_client(self) -> OpenAI:
         if self._client is None:
-            # api_token kwarg pending lmstudio SDK update; LM_API_TOKEN env var is set
-            self._client = lms.Client(f"{self._cfg.lmstudio.server_host}:{self._cfg.lmstudio.server_port}")
+            cfg = self._cfg.lmstudio
+            api_key = cfg.api_token or "lm-studio"
+            self._client = OpenAI(
+                base_url=f"http://{cfg.server_host}:{cfg.server_port}/v1",
+                api_key=api_key,
+            )
         return self._client
 
-    def _get_model(self):
-        if self._model is None:
-            self._model = self._get_client().llm.model(self._cfg.lmstudio.model)
-        return self._model
+    def _call_llm(self, messages: list[dict], structured: bool) -> PostAnalysis | str:
+        cfg = self._cfg.lmstudio
+        client = self._get_client()
+        if structured:
+            completion = client.beta.chat.completions.parse(
+                model=cfg.model,
+                messages=messages,
+                response_format=PostAnalysis,
+                temperature=cfg.temperature,
+                max_tokens=cfg.max_tokens,
+            )
+            parsed = completion.choices[0].message.parsed
+            if parsed is not None:
+                return parsed
+            # structured output returned None — fall through to text path
+            raw = completion.choices[0].message.content or ""
+        else:
+            completion = client.chat.completions.create(
+                model=cfg.model,
+                messages=messages,
+                response_format={"type": "json_object"},
+                temperature=cfg.temperature,
+                max_tokens=cfg.max_tokens,
+            )
+            raw = completion.choices[0].message.content or ""
+
+        # Try to parse the raw JSON string ourselves
+        try:
+            return PostAnalysis.model_validate_json(raw)
+        except Exception:
+            return raw
 
     async def analyze_post(
         self, post: PostRecord, channel_cfg: ChannelConfig | None = None
@@ -109,31 +146,28 @@ class Analyzer:
             if (channel_cfg and channel_cfg.custom_prompt)
             else SYSTEM_PROMPT
         )
-        chat = build_chat_for_post(post, system, client=self._get_client())
-        inference_config = {
-            "max_tokens": self._cfg.lmstudio.max_tokens,
-            "temperature": self._cfg.lmstudio.temperature,
-        }
+        messages = build_messages(post, system)
 
         for attempt in range(3):
             try:
-                result = await asyncio.to_thread(
-                    self._get_model().respond,
-                    chat,
-                    response_format=PostAnalysis,
-                    config=inference_config,
-                )
-                return PostAnalysis.model_validate(result.parsed)
+                result = await asyncio.to_thread(self._call_llm, messages, True)
+                if isinstance(result, PostAnalysis):
+                    return result
+                return parse_analysis_fallback(result if isinstance(result, str) else "")
             except Exception as e:
                 if attempt == 2:
                     log.warning(
-                        "Structured output failed for post %s after 3 attempts, using fallback: %s",
+                        "Analysis failed for post %s after 3 attempts, using fallback: %s",
                         post.message_id, e,
                     )
-                    raw = await asyncio.to_thread(
-                        self._get_model().respond, chat, config=inference_config
-                    )
-                    return parse_analysis_fallback(raw.content)
+                    try:
+                        result = await asyncio.to_thread(self._call_llm, messages, False)
+                        if isinstance(result, PostAnalysis):
+                            return result
+                        return parse_analysis_fallback(result if isinstance(result, str) else "")
+                    except Exception as fe:
+                        log.error("Fallback also failed for post %s: %s", post.message_id, fe)
+                        return parse_analysis_fallback("")
                 await asyncio.sleep(10 * (attempt + 1))
 
     async def process_unanalysed(

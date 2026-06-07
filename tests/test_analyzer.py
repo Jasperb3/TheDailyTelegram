@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from tg_compiler.analyzer import PostAnalysis, parse_analysis_fallback, build_chat_for_post
+from tg_compiler.analyzer import PostAnalysis, parse_analysis_fallback, build_messages
 
 
 def test_post_analysis_parses_valid_json():
@@ -46,16 +46,18 @@ def test_fallback_parser_returns_defaults_when_nothing_found():
     assert pa.category in ["Breaking News", "Analysis", "Official Statement", "Rumor", "Media", "Other"]
 
 
-def test_build_chat_text_only(sample_post):
+def test_build_messages_text_only(sample_post):
     sample_post.media_paths = []
-    chat = build_chat_for_post(sample_post, system_prompt="You are an analyst.")
-    assert chat is not None
+    messages = build_messages(sample_post, system_prompt="You are an analyst.")
+    assert len(messages) == 2
+    assert messages[0]["role"] == "system"
+    assert messages[1]["role"] == "user"
 
 
-def test_build_chat_truncates_long_text(sample_post):
+def test_build_messages_truncates_long_text(sample_post):
     sample_post.text = "x" * 5000
     sample_post.media_paths = []
-    chat = build_chat_for_post(sample_post, system_prompt="You are an analyst.")
-    user_msg = next(m for m in chat._messages if m.role == "user")
-    full_text = "".join(part.text for part in user_msg.content if hasattr(part, "text"))
-    assert full_text.count("x") == 3000
+    messages = build_messages(sample_post, system_prompt="You are an analyst.")
+    user_content = messages[1]["content"]
+    text_part = next(p for p in user_content if p["type"] == "text")
+    assert text_part["text"].count("x") == 3000
