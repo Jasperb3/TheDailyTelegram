@@ -1,0 +1,10 @@
+*.session
+*.session-journal
+data/
+briefings/
+.env
+__pycache__/
+*.pyc
+.venv/
+dist/
+*.egg-info/
