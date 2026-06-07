@@ -47,13 +47,15 @@ def main() -> None:
     parser.add_argument("--generate", action="store_true")
     args = parser.parse_args()
 
+    if not (args.batch or args.daemon or args.generate):
+        parser.print_help()
+        return
+
     cfg = load_config(args.config, env_override=True)
     os.makedirs(cfg.storage.media_dir, exist_ok=True)
 
     if args.batch:
         asyncio.run(run_batch(cfg))
-    else:
-        parser.print_help()
 
 
 if __name__ == "__main__":
