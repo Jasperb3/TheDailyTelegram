@@ -1,0 +1,15 @@
+# Daily Briefing — {{ date }}
+
+{% for channel_name, posts in channels.items() %}
+## Channel: {{ channel_name }}
+
+{% for post in posts %}
+### Post {{ post.message_id }} — {{ post.timestamp.strftime('%H:%M UTC') }}
+
+{{ post.text or "_No text_" }}
+
+---
+{% endfor %}
+{% endfor %}
+
+_{{ total }} posts ingested._
