@@ -43,9 +43,10 @@ def test_markdown_has_channel_section():
     assert "news" in md
 
 
-def test_markdown_shows_importance_badge():
+def test_markdown_shows_threat_badge():
     md = render_markdown(make_content())
-    assert "⬤" in md
+    # default threat_level is MODERATE
+    assert "MODERATE" in md or "HIGH" in md or "CRITICAL" in md or "LOW" in md
 
 
 def test_markdown_includes_post_summary():

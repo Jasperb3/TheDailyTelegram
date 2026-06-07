@@ -10,7 +10,7 @@
 
 {% for item in content.main_items[:10] %}
 {% set username = content.channel_links.get(item.post.channel_name, '') %}
-- {{ importance_badge(item.composite_score) }} <span class="cat-slug">{{ item.analysis.category }}</span> — {{ item.analysis.title if item.analysis.title else item.analysis.summary[:90] ~ ('…' if item.analysis.summary|length > 90 else '') }} _({{ item.post.channel_name }}, {{ item.post.timestamp.strftime('%H:%M UTC') }}{% if username %}, [↗ t.me](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %})_
+- {{ threat_badge(item.analysis.threat_level) }} · `{{ item.analysis.category }}` — {{ item.analysis.title if item.analysis.title else item.analysis.summary[:90] ~ ('…' if item.analysis.summary|length > 90 else '') }} _({{ item.post.channel_name }}, {{ item.post.timestamp.strftime('%H:%M UTC') }}{% if username %}, [↗ t.me](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %})_
 {% else %}
 _No high-priority items today._
 {% endfor %}
@@ -21,9 +21,9 @@ _No high-priority items today._
 {% set username = content.channel_links.get(channel, '') %}
 
 {% for item in content.main_items if item.post.channel_name == channel %}
-### {{ importance_badge(item.composite_score) }} {{ item.analysis.title if item.analysis.title else item.analysis.summary[:90] ~ ('…' if item.analysis.summary|length > 90 else '') }}
+### {{ threat_badge(item.analysis.threat_level) }} · `{{ item.analysis.category }}` · **{{ item.analysis.title if item.analysis.title else item.analysis.summary[:90] ~ ('…' if item.analysis.summary|length > 90 else '') }}**
 
-<small>{{ item.post.timestamp.strftime('%H:%M UTC') }} · <span class="cat-slug">{{ item.analysis.category }}</span> · Score {{ "%.1f"|format(item.composite_score) }}/5 · ID {{ item.post.message_id }}{% if username %} · [↗ t.me](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %}</small>
+<small>{{ item.post.timestamp.strftime('%H:%M UTC') }} · Score {{ "%.1f"|format(item.composite_score) }}/5 · ID {{ item.post.message_id }}{% if username %} · [↗ t.me](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %}</small>
 
 {{ item.analysis.summary }}
 
@@ -72,6 +72,6 @@ _No posts above threshold for this channel._
 | Main briefing | {{ content.main_items|length }} |
 | Appendix | {{ content.appendix_items|length }} |
 | Channels | {{ content.channel_names | join(', ') or '—' }} |
-{% for cat, count in content.category_counts | dictsort(by='value', reverse=true) %}
+{%- for cat, count in content.category_counts | dictsort(by='value', reverse=true) %}
 | {{ cat }} | {{ count }} |
-{% endfor %}
+{%- endfor %}

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from openai import OpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from tg_compiler.config import AppConfig, ChannelConfig
 from tg_compiler.db import Database, PostRecord, AnalysisRecord
@@ -15,15 +15,27 @@ from tg_compiler.db import Database, PostRecord, AnalysisRecord
 log = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
-    "You are an intelligence analyst. For each Telegram post:\n"
+    "You are an award-winning intelligence analyst. For each Telegram post:\n"
     "1. Write a concise headline title (5-10 words, no punctuation at end).\n"
     "2. Write a 1-2 sentence summary.\n"
     "3. Score importance, urgency, credibility, relevance each 1-5.\n"
     "4. Category: Breaking News | Analysis | Official Statement | Rumor | Media | Other.\n"
     "5. List up to 5 key named entities.\n"
     "6. Set image_substantive=true only if the image contains info absent from the text.\n"
+    "7. Set threat_level to exactly one of: CRITICAL, HIGH, MODERATE, LOW.\n"
+    "   CRITICAL — imminent risk of mass casualties, confirmed state-level military action underway, "
+    "nuclear/chemical/biological threat, or active attack on critical infrastructure.\n"
+    "   HIGH — confirmed armed conflict development, significant political crisis, major terror attack, "
+    "or credible escalation warning from a named senior state official.\n"
+    "   MODERATE — ongoing conflict updates, diplomatic developments, significant arrests or detentions, "
+    "or unverified but plausible escalation claims.\n"
+    "   LOW — background context, routine troop movement reports, unverified rumours, "
+    "social media content, statistical or historical reports.\n"
     "Respond with valid JSON matching the PostAnalysis schema."
 )
+
+
+_VALID_THREAT_LEVELS = {"CRITICAL", "HIGH", "MODERATE", "LOW"}
 
 
 class PostAnalysis(BaseModel):
@@ -38,6 +50,13 @@ class PostAnalysis(BaseModel):
     image_substantive: bool = False
     image_description: Optional[str] = None
     reasoning: str = ""
+    threat_level: str = "MODERATE"
+
+    @field_validator("threat_level")
+    @classmethod
+    def validate_threat_level(cls, v: str) -> str:
+        normalised = v.upper().strip() if v else "MODERATE"
+        return normalised if normalised in _VALID_THREAT_LEVELS else "MODERATE"
 
 
 _ENTITY_GARBAGE = re.compile(
@@ -109,6 +128,7 @@ def parse_analysis_fallback(raw: str) -> PostAnalysis:
         credibility_score=3,
         relevance_score=3,
         category=category,
+        threat_level="MODERATE",
         reasoning="Extracted via fallback parser",
     )
 
@@ -248,6 +268,7 @@ class Analyzer:
                 key_entities=analysis.key_entities,
                 image_insights=analysis.image_description,
                 model_used=self._cfg.lmstudio.model,
+                threat_level=analysis.threat_level,
             ))
             count += 1
         return count

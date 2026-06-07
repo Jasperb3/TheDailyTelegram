@@ -180,6 +180,7 @@ async def run_daemon(config: AppConfig) -> None:
                         key_entities=analysis.key_entities,
                         image_insights=analysis.image_description,
                         model_used=config.lmstudio.model,
+                        threat_level=analysis.threat_level,
                     ))
                 except Exception as e:
                     log.error("Analysis failed for post %s: %s", msg.id, e)
@@ -213,6 +214,7 @@ def main() -> None:
     parser.add_argument("--batch", action="store_true")
     parser.add_argument("--daemon", action="store_true")
     parser.add_argument("--generate", action="store_true")
+    parser.add_argument("--analyse", action="store_true")
     parser.add_argument(
         "--since",
         metavar="TIME",
@@ -221,28 +223,34 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if not (args.batch or args.daemon or args.generate):
+    if not (args.batch or args.daemon or args.generate or args.analyse):
         parser.print_help()
         return
 
     cfg = load_config(args.config, env_override=True)
     os.makedirs(cfg.storage.media_dir, exist_ok=True)
 
+    since_dt = None
     if args.since:
-        if not args.batch:
-            raise SystemExit("--since can only be used with --batch")
+        if not (args.batch or args.analyse):
+            raise SystemExit("--since can only be used with --batch or --analyse")
         since_dt = _parse_since(args.since)
-        now = datetime.now(timezone.utc)
-        cfg.telegram.lookback_seconds = max(1, int((now - since_dt).total_seconds()))
-        db = Database(cfg.storage.db_path)
-        db.init_schema()
-        db.reset_all_cursors()
-        log.info("--since %s: lookback set to %ds, all channel cursors reset", args.since, cfg.telegram.lookback_seconds)
+        if args.batch:
+            now = datetime.now(timezone.utc)
+            cfg.telegram.lookback_seconds = max(1, int((now - since_dt).total_seconds()))
+            db = Database(cfg.storage.db_path)
+            db.init_schema()
+            db.reset_all_cursors()
+            log.info("--since %s: lookback set to %ds, all channel cursors reset", args.since, cfg.telegram.lookback_seconds)
 
     if args.batch:
         asyncio.run(run_batch(cfg))
     elif args.daemon:
         asyncio.run(run_daemon(cfg))
+    elif args.analyse:
+        from tg_compiler.synthesiser import run_analysis
+        target_date = since_dt.date() if since_dt else date.today()
+        asyncio.run(run_analysis(cfg, target_date))
     elif args.generate:
         from tg_compiler.triage import triage as do_triage
         from tg_compiler.generator import generate_briefing

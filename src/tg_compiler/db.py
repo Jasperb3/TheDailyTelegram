@@ -32,6 +32,7 @@ class AnalysisRecord:
     model_used: str
     image_insights: str | None = None
     title: str = ""
+    threat_level: str = "MODERATE"
     id: int | None = None
 
 
@@ -78,17 +79,25 @@ class Database:
             );
         """)
         self._conn.commit()
-        # Migrate: add title column to existing DBs that predate this field
-        try:
-            self._conn.execute("ALTER TABLE analyses ADD COLUMN title TEXT")
-            self._conn.commit()
-        except Exception:
-            pass  # column already exists
-        try:
+        existing = {
+            row[1]
+            for row in self._conn.execute("PRAGMA table_info(analyses)").fetchall()
+        }
+        for col, defn in [
+            ("title", "TEXT"),
+            ("threat_level", "TEXT DEFAULT 'MODERATE'"),
+        ]:
+            if col not in existing:
+                self._conn.execute(f"ALTER TABLE analyses ADD COLUMN {col} {defn}")
+                self._conn.commit()
+
+        post_cols = {
+            row[1]
+            for row in self._conn.execute("PRAGMA table_info(posts)").fetchall()
+        }
+        if "has_video" not in post_cols:
             self._conn.execute("ALTER TABLE posts ADD COLUMN has_video BOOLEAN DEFAULT 0")
             self._conn.commit()
-        except Exception:
-            pass  # column already exists
 
     def insert_post(self, post: PostRecord) -> int | None:
         try:
@@ -146,11 +155,11 @@ class Database:
         cur = self._conn.execute(
             """INSERT INTO analyses
                (post_id, title, summary, importance_score, urgency_score, credibility_score,
-                relevance_score, category, key_entities, image_insights, model_used)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                relevance_score, category, key_entities, image_insights, model_used, threat_level)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (rec.post_id, rec.title, rec.summary, rec.importance_score, rec.urgency_score,
              rec.credibility_score, rec.relevance_score, rec.category,
-             json.dumps(rec.key_entities), rec.image_insights, rec.model_used),
+             json.dumps(rec.key_entities), rec.image_insights, rec.model_used, rec.threat_level),
         )
         self._conn.commit()
         return cur.lastrowid
@@ -159,7 +168,7 @@ class Database:
         rows = self._conn.execute(
             """SELECT p.*, a.id as a_id, a.title, a.summary, a.importance_score, a.urgency_score,
                       a.credibility_score, a.relevance_score, a.category,
-                      a.key_entities, a.image_insights, a.model_used
+                      a.key_entities, a.image_insights, a.model_used, a.threat_level
                FROM posts p
                JOIN analyses a ON a.post_id = p.id
                WHERE DATE(p.timestamp) = ?""",
@@ -181,8 +190,42 @@ class Database:
                 key_entities=json.loads(row["key_entities"] or "[]"),
                 image_insights=row["image_insights"],
                 model_used=row["model_used"],
+                threat_level=row["threat_level"] or "MODERATE",
             )
             result.append((post, analysis))
+        return result
+
+    def get_top_posts_for_date(self, date_str: str, limit: int = 20) -> list[dict]:
+        rows = self._conn.execute(
+            """SELECT
+                   a.title,
+                   a.summary,
+                   a.category,
+                   COALESCE(a.threat_level, 'MODERATE') as threat_level,
+                   (0.4*a.importance_score + 0.3*a.urgency_score
+                    + 0.2*a.credibility_score + 0.1*a.relevance_score) as composite_score,
+                   p.channel_name as channel_slug,
+                   p.timestamp,
+                   a.key_entities
+               FROM analyses a
+               JOIN posts p ON p.id = a.post_id
+               WHERE DATE(a.processed_at) = ?
+               ORDER BY composite_score DESC
+               LIMIT ?""",
+            (date_str, limit),
+        ).fetchall()
+        result = []
+        for row in rows:
+            result.append({
+                "title": row["title"] or "",
+                "summary": row["summary"] or "",
+                "category": row["category"] or "Other",
+                "threat_level": row["threat_level"],
+                "composite_score": row["composite_score"],
+                "channel_slug": row["channel_slug"],
+                "timestamp": row["timestamp"],
+                "entities": json.loads(row["key_entities"] or "[]"),
+            })
         return result
 
 

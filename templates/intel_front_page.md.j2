@@ -1,0 +1,41 @@
+# INTELLIGENCE ASSESSMENT
+## {{ date }} · Daily Edition
+*Classification: UNCLASSIFIED // FOR TRAINING USE ONLY*
+
+---
+
+### Situation Summary
+
+{{ situation_summary }}
+
+---
+
+### Key Themes
+
+{% for item in key_themes %}
+**{{ item.theme }}**
+{{ item.detail }}
+
+{% endfor %}
+
+---
+
+### Signals & Warnings
+
+{% for item in signals_and_warnings %}
+**⚠ {{ item.signal }}**
+{{ item.assessment }}
+
+{% endfor %}
+
+---
+
+### Named Actors
+
+{% for actor in named_actors %}
+**{{ actor.actor }}** · *{{ actor.role }}*
+{{ actor.activity }}
+
+{% endfor %}
+
+---
