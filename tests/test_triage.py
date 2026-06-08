@@ -209,3 +209,40 @@ def test_dedup_entity_overlap():
     result = triage([(p1, a1), (p2, a2)], config)
     total = len(result.main_items) + len(result.appendix_items)
     assert total == 1
+
+
+def test_dedup_24h_entity_cluster_collapses_duplicate():
+    # Two posts sharing 4+ entities with a 4-hour gap → deduplicated by 24h rule
+    base_ts = datetime(2026, 6, 7, 12, 0, tzinfo=timezone.utc)
+    p1, a1 = make_pair(importance=5, msg_id=1,
+                       summary="Unrelated wording that shares no words with the next post",
+                       timestamp=base_ts)
+    a1.key_entities = ["Israel", "Iran", "IRGC", "Tel Aviv", "ballistic missile"]
+    p2, a2 = make_pair(importance=3, msg_id=2,
+                       summary="Completely different phrasing about an entirely other matter",
+                       timestamp=base_ts + timedelta(hours=4))
+    a2.key_entities = ["Israel", "Iran", "IRGC", "Tel Aviv", "drone strike"]
+    config = TriageConfig(min_composite_score=0.0)
+    result = triage([(p1, a1), (p2, a2)], config)
+    total = len(result.main_items) + len(result.appendix_items)
+    assert total == 1
+    kept = (result.main_items + result.appendix_items)[0]
+    assert kept.post.message_id == 1  # higher-scored post wins
+
+
+def test_dedup_24h_entity_cluster_not_triggered_with_only_3_entities():
+    # Two posts sharing only 3 entities with a 3-hour gap → NOT collapsed
+    # (gap > 2h so old rule doesn't apply; new rule requires 4 shared entities)
+    base_ts = datetime(2026, 6, 7, 12, 0, tzinfo=timezone.utc)
+    p1, a1 = make_pair(importance=5, msg_id=1,
+                       summary="Unrelated wording that shares no words with the next post",
+                       timestamp=base_ts)
+    a1.key_entities = ["Israel", "Iran", "IRGC", "Tel Aviv"]
+    p2, a2 = make_pair(importance=3, msg_id=2,
+                       summary="Completely different phrasing about an entirely other matter",
+                       timestamp=base_ts + timedelta(hours=3))
+    a2.key_entities = ["Israel", "Iran", "IRGC", "Hezbollah"]
+    config = TriageConfig(min_composite_score=0.0)
+    result = triage([(p1, a1), (p2, a2)], config)
+    total = len(result.main_items) + len(result.appendix_items)
+    assert total == 2

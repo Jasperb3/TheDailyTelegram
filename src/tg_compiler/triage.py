@@ -70,6 +70,20 @@ def _is_duplicate(
         if len(cand_entities) >= 3 and len(exist_entities) >= 3:
             if len(cand_entities & exist_entities) >= 3:
                 return True
+
+    # 24-hour entity-cluster pass: ≥4 shared entities within a 24h window
+    for existing in kept:
+        delta = abs(
+            (candidate.post.timestamp - existing.post.timestamp).total_seconds()
+        )
+        if delta > 86400:
+            continue
+        cand_entities = {e.lower() for e in candidate.analysis.key_entities}
+        exist_entities = {e.lower() for e in existing.analysis.key_entities}
+        if len(cand_entities) >= 4 and len(exist_entities) >= 4:
+            if len(cand_entities & exist_entities) >= 4:
+                return True
+
     return False
 
 
