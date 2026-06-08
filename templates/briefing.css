@@ -52,7 +52,7 @@ h3 { font-size: 1.05em; color: #1a1a1a; font-weight: bold; }
 
 /* ── Category slugs ───────────────────────────────────────────── */
 .cat-slug {
-  display: inline-block;
+  display: inline;
   font-size: 0.72em;
   font-weight: bold;
   text-transform: uppercase;
