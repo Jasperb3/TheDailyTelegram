@@ -48,7 +48,7 @@ def _jaccard(a: str, b: str, min_len: int = 3) -> float:
 def _is_duplicate(
     candidate: TriagedPost,
     kept: list[TriagedPost],
-    time_window_secs: float = 7200.0,
+    time_window_secs: float,
     threshold: float = 0.28,
 ) -> bool:
     for existing in kept:
@@ -97,7 +97,7 @@ def triage(
     # AND are within a 2-hour window.
     kept: list[TriagedPost] = []
     for item in scored:
-        if not _is_duplicate(item, kept):
+        if not _is_duplicate(item, kept, time_window_secs=config.dedup_window_secs):
             kept.append(item)
 
     main_scored = [t for t in kept if t.composite_score >= config.min_composite_score]
