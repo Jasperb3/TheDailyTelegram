@@ -209,7 +209,7 @@ class Database:
                    a.key_entities
                FROM analyses a
                JOIN posts p ON p.id = a.post_id
-               WHERE DATE(a.processed_at) = ?
+               WHERE DATE(p.timestamp) = ?
                ORDER BY composite_score DESC
                LIMIT ?""",
             (date_str, limit),
