@@ -23,10 +23,25 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 TEMPLATES_DIR = Path(__file__).parent.parent.parent / "templates"
 
 
-async def run_batch(config: AppConfig) -> None:
-    from tg_compiler.analyzer import Analyzer
+async def generate_daily_briefing(config: AppConfig, target_date: date, db: Database) -> str:
     from tg_compiler.triage import triage as do_triage
     from tg_compiler.generator import generate_briefing
+
+    pairs = db.get_days_posts_with_analyses(target_date.isoformat())
+    content = do_triage(pairs, config.triage, today=target_date)
+    content.channel_links = {
+        ch.slug: ch.username.lstrip("@")
+        for ch in config.telegram.channels
+        if ch.username
+    }
+    path = generate_briefing(content, config.generation.output_dir, pdf=True)
+    log.info("Briefing generated: %s", path)
+    return path
+
+
+async def run_batch(config: AppConfig) -> None:
+    from tg_compiler.analyzer import Analyzer
+    from tg_compiler.synthesiser import run_analysis
 
     db = Database(config.storage.db_path)
     db.init_schema()
@@ -42,17 +57,7 @@ async def run_batch(config: AppConfig) -> None:
     count = await analyzer.process_unanalysed(channel_map)
     log.info("Analysed %d posts", count)
 
-    pairs = db.get_days_posts_with_analyses(today.isoformat())
-    content = do_triage(pairs, config.triage, today=today)
-    content.channel_links = {
-        ch.slug: ch.username.lstrip("@")
-        for ch in config.telegram.channels
-        if ch.username
-    }
-    path = generate_briefing(content, config.generation.output_dir, pdf=True)
-    log.info("Briefing generated: %s", path)
-
-    from tg_compiler.synthesiser import run_analysis
+    await generate_daily_briefing(config, today, db)
     await run_analysis(config, today)
 
 
@@ -75,9 +80,6 @@ def purge_old_media(media_dir: str, retention_days: int) -> int:
 
 
 async def schedule_daily_generation(config: AppConfig) -> None:
-    from tg_compiler.triage import triage as do_triage
-    from tg_compiler.generator import generate_briefing
-
     h, m = map(int, config.generation.generate_at.split(":"))
     while True:
         now = datetime.now()
@@ -89,14 +91,7 @@ async def schedule_daily_generation(config: AppConfig) -> None:
         today = date.today()
         db = Database(config.storage.db_path)
         db.init_schema()
-        pairs = db.get_days_posts_with_analyses(today.isoformat())
-        content = do_triage(pairs, config.triage, today=today)
-        content.channel_links = {
-            ch.slug: ch.username.lstrip("@")
-            for ch in config.telegram.channels
-            if ch.username
-        }
-        generate_briefing(content, config.generation.output_dir, pdf=True)
+        await generate_daily_briefing(config, today, db)
 
         removed = purge_old_media(config.storage.media_dir, config.storage.retention_days)
         log.info("Daily briefing complete. Purged %d old media directories.", removed)
@@ -254,19 +249,9 @@ def main() -> None:
         target_date = since_dt.date() if since_dt else date.today()
         asyncio.run(run_analysis(cfg, target_date))
     elif args.generate:
-        from tg_compiler.triage import triage as do_triage
-        from tg_compiler.generator import generate_briefing
         db = Database(cfg.storage.db_path)
         db.init_schema()
-        today = date.today()
-        pairs = db.get_days_posts_with_analyses(today.isoformat())
-        content = do_triage(pairs, cfg.triage, today=today)
-        content.channel_links = {
-            ch.slug: ch.username.lstrip("@")
-            for ch in cfg.telegram.channels
-            if ch.username
-        }
-        out = generate_briefing(content, cfg.generation.output_dir, pdf=True)
+        out = asyncio.run(generate_daily_briefing(cfg, date.today(), db))
         print(f"Generated: {out}")
 
 
