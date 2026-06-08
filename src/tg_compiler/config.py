@@ -37,6 +37,7 @@ class TriageConfig(BaseModel):
     min_composite_score: float = 2.5
     max_main_items: int = 50
     dedup_window_secs: int = 7200
+    entity_cluster_window_secs: int = 86400
     categories_of_interest: list[str] = Field(
         default_factory=lambda: ["Breaking News", "Official Statement", "Analysis"]
     )

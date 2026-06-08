@@ -23,6 +23,8 @@ def strip_dangerous_html(text: str) -> str:
 _ENTITY_GARBAGE = re.compile(
     r'[`{}<>]|json|PostAnalysis|importance_score|urgency_score'
     r'|title|summary|category|image_substantive|post_id|credibility|relevance|reasoning'
+    r'|key_entities|threat_level|image_description|\.json\('
+    r'|\bfalse\b|\btrue\b|\bnull\b'
 )
 
 

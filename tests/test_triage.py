@@ -164,6 +164,36 @@ def test_category_counts_populated():
     assert result.category_counts["Analysis"] == 1
 
 
+def test_severity_tiebreaker_critical_over_high():
+    # Both posts have the same composite score (5.0 via keyword boost); CRITICAL should rank first.
+    base_ts = datetime(2026, 6, 7, 12, 0, tzinfo=timezone.utc)
+    p1, a1 = make_pair(importance=5, urgency=5, credibility=5, relevance=5,
+                       msg_id=1, summary="Critical event requiring immediate attention", timestamp=base_ts)
+    a1.threat_level = "HIGH"
+    p2, a2 = make_pair(importance=5, urgency=5, credibility=5, relevance=5,
+                       msg_id=2, summary="Another event of critical severity level found", timestamp=base_ts)
+    a2.threat_level = "CRITICAL"
+    config = TriageConfig(min_composite_score=0.0)
+    result = triage([(p1, a1), (p2, a2)], config)
+    assert len(result.main_items) == 2  # both posts survive dedup
+    assert result.main_items[0].post.message_id == 2  # CRITICAL outranks HIGH
+
+
+def test_severity_tiebreaker_high_over_moderate():
+    # Both posts have the same composite score; HIGH should rank above MODERATE.
+    base_ts = datetime(2026, 6, 7, 12, 0, tzinfo=timezone.utc)
+    p1, a1 = make_pair(importance=5, urgency=5, credibility=5, relevance=5,
+                       msg_id=1, summary="Moderate situation developing in the region", timestamp=base_ts)
+    a1.threat_level = "MODERATE"
+    p2, a2 = make_pair(importance=5, urgency=5, credibility=5, relevance=5,
+                       msg_id=2, summary="High severity incident reported at border crossing", timestamp=base_ts)
+    a2.threat_level = "HIGH"
+    config = TriageConfig(min_composite_score=0.0)
+    result = triage([(p1, a1), (p2, a2)], config)
+    assert len(result.main_items) == 2  # both posts survive dedup
+    assert result.main_items[0].post.message_id == 2  # HIGH outranks MODERATE
+
+
 def test_dedup_entity_overlap():
     # Same entities, same time window → duplicate
     base_ts = datetime(2026, 6, 7, 12, 0, tzinfo=timezone.utc)
@@ -179,3 +209,61 @@ def test_dedup_entity_overlap():
     result = triage([(p1, a1), (p2, a2)], config)
     total = len(result.main_items) + len(result.appendix_items)
     assert total == 1
+
+
+def test_dedup_24h_entity_cluster_collapses_duplicate():
+    # Two posts sharing 4+ entities with a 4-hour gap → deduplicated by 24h rule
+    base_ts = datetime(2026, 6, 7, 12, 0, tzinfo=timezone.utc)
+    p1, a1 = make_pair(importance=5, msg_id=1,
+                       summary="Unrelated wording that shares no words with the next post",
+                       timestamp=base_ts)
+    a1.key_entities = ["Israel", "Iran", "IRGC", "Tel Aviv", "ballistic missile"]
+    p2, a2 = make_pair(importance=3, msg_id=2,
+                       summary="Completely different phrasing about an entirely other matter",
+                       timestamp=base_ts + timedelta(hours=4))
+    a2.key_entities = ["Israel", "Iran", "IRGC", "Tel Aviv", "drone strike"]
+    # dedup_window_secs=3600 (1h) ensures the 4h gap is outside the primary window,
+    # so only the entity-cluster pass can trigger the dedup.
+    config = TriageConfig(min_composite_score=0.0, dedup_window_secs=3600)
+    result = triage([(p1, a1), (p2, a2)], config)
+    total = len(result.main_items) + len(result.appendix_items)
+    assert total == 1
+    kept = (result.main_items + result.appendix_items)[0]
+    assert kept.post.message_id == 1  # higher-scored post wins
+
+
+def test_null_score_excluded_from_main_and_appendix():
+    # A post with a zero importance score (corrupt record) must be excluded entirely.
+    post, analysis = make_pair(importance=0, summary="A valid summary that is long enough to pass")
+    config = TriageConfig(min_composite_score=0.0)
+    result = triage([(post, analysis)], config)
+    assert len(result.main_items) == 0
+    assert len(result.appendix_items) == 0
+
+
+def test_none_score_excluded_from_main_and_appendix():
+    # A post with a None score (missing column from old DB migration) must be excluded entirely.
+    post, analysis = make_pair(summary="A valid summary that is long enough to pass")
+    analysis.urgency_score = None
+    config = TriageConfig(min_composite_score=0.0)
+    result = triage([(post, analysis)], config)
+    assert len(result.main_items) == 0
+    assert len(result.appendix_items) == 0
+
+
+def test_dedup_24h_entity_cluster_not_triggered_with_only_3_entities():
+    # Two posts sharing only 3 entities with a 3-hour gap → NOT collapsed
+    # (gap > 2h so old rule doesn't apply; new rule requires 4 shared entities)
+    base_ts = datetime(2026, 6, 7, 12, 0, tzinfo=timezone.utc)
+    p1, a1 = make_pair(importance=5, msg_id=1,
+                       summary="Unrelated wording that shares no words with the next post",
+                       timestamp=base_ts)
+    a1.key_entities = ["Israel", "Iran", "IRGC", "Tel Aviv"]
+    p2, a2 = make_pair(importance=3, msg_id=2,
+                       summary="Completely different phrasing about an entirely other matter",
+                       timestamp=base_ts + timedelta(hours=3))
+    a2.key_entities = ["Israel", "Iran", "IRGC", "Hezbollah"]
+    config = TriageConfig(min_composite_score=0.0)
+    result = triage([(p1, a1), (p2, a2)], config)
+    total = len(result.main_items) + len(result.appendix_items)
+    assert total == 2

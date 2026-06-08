@@ -21,6 +21,7 @@ _No high-priority items today._
 {% set username = content.channel_links.get(channel, '') %}
 
 {% for item in content.main_items if item.post.channel_name == channel %}
+{% if item.analysis.summary %}
 ### {{ threat_badge(item.analysis.threat_level) }} · `{{ item.analysis.category }}` · **{{ item.analysis.title if item.analysis.title else item.analysis.summary[:90] ~ ('…' if item.analysis.summary|length > 90 else '') }}**
 
 <small>{{ item.post.timestamp.strftime('%H:%M UTC') }} · Score {{ "%.1f"|format(item.composite_score) }}/5 · ID {{ item.post.message_id }}{% if username %} · [↗ t.me](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %}</small>
@@ -30,7 +31,7 @@ _No high-priority items today._
 **Entities:** {{ item.analysis.key_entities | clean_entities | join(', ') or '—' }}
 
 {% if item.analysis.image_insights and item.analysis.image_insights | lower not in ('n/a', 'none', 'no image provided', 'no image provided.', 'no image.') and item.analysis.image_insights | length > 10 %}
-**Image:** {{ item.analysis.image_insights }}
+{% if item.post.has_video %}**Video:** {% else %}**Image:** {% endif %}{{ item.analysis.image_insights }}
 {% endif %}
 
 {% if item.post.has_video %}
@@ -44,6 +45,7 @@ _No high-priority items today._
 {% endif %}
 
 ---
+{% endif %}
 {% else %}
 _No posts above threshold for this channel._
 {% endfor %}
@@ -66,12 +68,13 @@ _No posts above threshold for this channel._
 
 ## Statistics
 
+**Channels:** {{ content.channel_names | join(', ') or '—' }}
+
 | Metric | Value |
 |--------|-------|
 | Total posts | {{ content.main_items|length + content.appendix_items|length }} |
 | Main briefing | {{ content.main_items|length }} |
 | Appendix | {{ content.appendix_items|length }} |
-| Channels | {{ content.channel_names | join(', ') or '—' }} |
 {%- for cat, count in content.category_counts | dictsort(by='value', reverse=true) %}
 | {{ cat }} | {{ count }} |
 {%- endfor %}

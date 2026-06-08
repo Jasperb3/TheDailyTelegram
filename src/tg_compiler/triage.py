@@ -9,6 +9,8 @@ from tg_compiler.db import PostRecord, AnalysisRecord
 
 _NON_WORD = re.compile(r'[^\w\s]')
 
+_SEVERITY_RANK: dict[str, int] = {"CRITICAL": 4, "HIGH": 3, "MODERATE": 2, "LOW": 1}
+
 
 @dataclass
 class TriagedPost:
@@ -49,6 +51,7 @@ def _is_duplicate(
     candidate: TriagedPost,
     kept: list[TriagedPost],
     time_window_secs: float,
+    entity_cluster_window_secs: float = 86400,
     threshold: float = 0.28,
 ) -> bool:
     for existing in kept:
@@ -68,6 +71,20 @@ def _is_duplicate(
         if len(cand_entities) >= 3 and len(exist_entities) >= 3:
             if len(cand_entities & exist_entities) >= 3:
                 return True
+
+    # Extended entity-cluster pass: ≥4 shared entities within the cluster window (default 24h)
+    for existing in kept:
+        delta = abs(
+            (candidate.post.timestamp - existing.post.timestamp).total_seconds()
+        )
+        if delta > entity_cluster_window_secs:
+            continue
+        cand_entities = {e.lower() for e in candidate.analysis.key_entities}
+        exist_entities = {e.lower() for e in existing.analysis.key_entities}
+        if len(cand_entities) >= 4 and len(exist_entities) >= 4:
+            if len(cand_entities & exist_entities) >= 4:
+                return True
+
     return False
 
 
@@ -82,6 +99,9 @@ def triage(
     for post, analysis in pairs:
         if not analysis.summary or len(analysis.summary.strip()) < 10:
             continue
+        if not all([analysis.importance_score, analysis.urgency_score,
+                    analysis.credibility_score, analysis.relevance_score]):
+            continue
         score = _composite(analysis)
         text_lower = (post.text or "").lower()
         for kw in config.keywords:
@@ -90,14 +110,19 @@ def triage(
                 break
         scored.append(TriagedPost(post=post, analysis=analysis, composite_score=score))
 
-    scored.sort(key=lambda t: (-t.composite_score, -t.post.timestamp.timestamp()))
+    scored.sort(key=lambda t: (
+        -t.composite_score,
+        -_SEVERITY_RANK.get(t.analysis.threat_level, 0),
+        -t.post.timestamp.timestamp(),
+    ))
 
     # Deduplicate: keep highest-scoring report per story cluster.
     # Two posts are duplicates if they share ≥35% words in summary/title
     # AND are within a 2-hour window.
     kept: list[TriagedPost] = []
     for item in scored:
-        if not _is_duplicate(item, kept, time_window_secs=config.dedup_window_secs):
+        if not _is_duplicate(item, kept, time_window_secs=config.dedup_window_secs,
+                              entity_cluster_window_secs=config.entity_cluster_window_secs):
             kept.append(item)
 
     main_scored = [t for t in kept if t.composite_score >= config.min_composite_score]

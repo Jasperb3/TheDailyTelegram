@@ -23,10 +23,10 @@ class PostRecord:
 class AnalysisRecord:
     post_id: int
     summary: str
-    importance_score: int
-    urgency_score: int
-    credibility_score: int
-    relevance_score: int
+    importance_score: int | None
+    urgency_score: int | None
+    credibility_score: int | None
+    relevance_score: int | None
     category: str
     key_entities: list[str]
     model_used: str
