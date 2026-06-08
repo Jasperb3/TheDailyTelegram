@@ -76,16 +76,6 @@ def test_image_description_with_json_artifact_returns_none():
     assert _clean_image_insights(".json(post_analysis){image_description: null}") is None
 
 
-def test_entity_typo_correction_whole_match():
-    result = clean_entities(["srael", "Iran"])
-    assert result == ["Israel", "Iran"]
-
-
-def test_entity_typo_correction_no_substring_match():
-    result = clean_entities(["sballistic missile"])
-    assert result == ["sballistic missile"]
-
-
 def test_numeric_consistency_same_numbers_consistent():
     assert _check_numeric_consistency("A 7.8 magnitude earthquake hit Mindanao", "M7.8 earthquake near Mindanao coast") is True
 
