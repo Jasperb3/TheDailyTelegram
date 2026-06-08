@@ -222,7 +222,9 @@ def test_dedup_24h_entity_cluster_collapses_duplicate():
                        summary="Completely different phrasing about an entirely other matter",
                        timestamp=base_ts + timedelta(hours=4))
     a2.key_entities = ["Israel", "Iran", "IRGC", "Tel Aviv", "drone strike"]
-    config = TriageConfig(min_composite_score=0.0)
+    # dedup_window_secs=3600 (1h) ensures the 4h gap is outside the primary window,
+    # so only the entity-cluster pass can trigger the dedup.
+    config = TriageConfig(min_composite_score=0.0, dedup_window_secs=3600)
     result = triage([(p1, a1), (p2, a2)], config)
     total = len(result.main_items) + len(result.appendix_items)
     assert total == 1

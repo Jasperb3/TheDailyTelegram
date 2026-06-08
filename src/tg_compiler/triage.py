@@ -51,6 +51,7 @@ def _is_duplicate(
     candidate: TriagedPost,
     kept: list[TriagedPost],
     time_window_secs: float,
+    entity_cluster_window_secs: float = 86400,
     threshold: float = 0.28,
 ) -> bool:
     for existing in kept:
@@ -71,12 +72,12 @@ def _is_duplicate(
             if len(cand_entities & exist_entities) >= 3:
                 return True
 
-    # 24-hour entity-cluster pass: ≥4 shared entities within a 24h window
+    # Extended entity-cluster pass: ≥4 shared entities within the cluster window (default 24h)
     for existing in kept:
         delta = abs(
             (candidate.post.timestamp - existing.post.timestamp).total_seconds()
         )
-        if delta > 86400:
+        if delta > entity_cluster_window_secs:
             continue
         cand_entities = {e.lower() for e in candidate.analysis.key_entities}
         exist_entities = {e.lower() for e in existing.analysis.key_entities}
@@ -117,7 +118,8 @@ def triage(
     # AND are within a 2-hour window.
     kept: list[TriagedPost] = []
     for item in scored:
-        if not _is_duplicate(item, kept, time_window_secs=config.dedup_window_secs):
+        if not _is_duplicate(item, kept, time_window_secs=config.dedup_window_secs,
+                              entity_cluster_window_secs=config.entity_cluster_window_secs):
             kept.append(item)
 
     main_scored = [t for t in kept if t.composite_score >= config.min_composite_score]
