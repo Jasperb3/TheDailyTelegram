@@ -47,6 +47,7 @@ python --version   # must be 3.11 or newer
 Download from [https://lmstudio.ai](https://lmstudio.ai) and install it. You need a Vision-Language Model (VLM) loaded — one that can analyse images alongside text.
 
 Recommended models (small and capable):
+- `google/gemma-4-12b` — default model, excellent intelligence and vision capabilities
 - `google/gemma-3-4b-it` — good balance of speed and quality
 - `llava-v1.5-7b` — strong multimodal reasoning
 - Any GGUF model with vision support
@@ -58,8 +59,8 @@ To start the server inside LM Studio: **Local Server → Start Server** (default
 ## Installation
 
 ```bash
-# Clone or copy the project directory, then:
-cd tg_compiler
+# Clone the repository, then:
+cd TheDailyTelegram
 
 # Create virtual environment
 python -m venv .venv
@@ -109,20 +110,21 @@ telegram:
       slug: "intel"
       priority: 0.8
   rate_limit_delay_ms: 500      # pause between channel scrapes (be conservative)
-  lookback_seconds: 43200       # how far back to scrape on first run (43200 = 12 hours)
+  lookback_seconds: 604800      # how far back to fetch on first run (default: 1 week)
                                 # use --batch --since HH:MM for a one-off lookback instead
 
 lmstudio:
   model: "google/gemma-4-12b"   # must match the model name shown in LM Studio
   server_host: "localhost"       # IP or hostname if LM Studio is on another machine
   server_port: 1234
+  # api_token: "lms-..."        # optional; overridden by LM_API_TOKEN env var
   temperature: 0.3
   max_tokens: 800
 
 triage:
   keywords: ["urgent", "breaking", "launch"]  # words that boost post score
   keyword_boost: 0.5        # added to composite score when a keyword matches
-  min_composite_score: 3.5  # posts below this go to the Appendix section
+  min_composite_score: 2.5  # posts below this go to the Appendix section
   max_main_items: 50        # hard cap on main briefing length (overflow → appendix)
 
 generation:
@@ -149,7 +151,7 @@ Edit `.env`:
 ```bash
 TG_API_ID=123456              # overrides telegram.api_id in config.yaml
 TG_API_HASH=your_api_hash     # overrides telegram.api_hash in config.yaml
-LM_API_TOKEN=lms-your-token   # required if LM Studio has authentication enabled
+LM_API_TOKEN=your_api_token_here # required if LM Studio has authentication enabled
 ```
 
 `TG_API_ID` and `TG_API_HASH` override the corresponding YAML fields. `LM_API_TOKEN` is only needed if you have enabled API token authentication in LM Studio's settings.
@@ -359,10 +361,10 @@ Each `--batch` or `--generate` run writes a new uniquely timestamped PDF. The `.
 
 | Badge | Level | Meaning |
 |---|---|---|
-| 🔴 | CRITICAL | Imminent mass casualty risk, confirmed state-level military action, nuclear/chemical/biological threat, or attack on critical infrastructure |
-| 🟠 | HIGH | Confirmed armed conflict development, significant political crisis, major terror attack, or credible escalation warning from a named senior official |
-| 🟡 | MODERATE | Ongoing conflict updates, diplomatic developments, significant arrests, or unverified but plausible escalation claims |
-| 🟢 | LOW | Background context, routine troop movement reports, unverified rumours, or historical/statistical reports |
+| 🔴 | CRITICAL | Imminent risk of mass casualties, confirmed state-level military action underway, nuclear/chemical/biological threat, or active attack on critical infrastructure |
+| 🟠 | HIGH | Confirmed armed conflict development, significant political crisis, major terror attack, or credible escalation warning from a named senior state official |
+| 🟡 | MODERATE | Ongoing conflict updates, diplomatic developments, significant arrests or detentions, or unverified but plausible escalation claims |
+| 🟢 | LOW | Background context, routine troop movement reports, unverified rumours, social media content, statistical or historical reports |
 
 ### Composite scoring formula
 
