@@ -75,6 +75,6 @@ _No posts above threshold for this channel._
 | Total posts | {{ content.main_items|length + content.appendix_items|length }} |
 | Main briefing | {{ content.main_items|length }} |
 | Appendix | {{ content.appendix_items|length }} |
-{% for cat, count in content.category_counts | dictsort(by='value', reverse=true) %}
+{%- for cat, count in content.category_counts | dictsort(by='value', reverse=true) %}
 | {{ cat }} | {{ count }} |
-{% endfor %}
+{%- endfor %}
