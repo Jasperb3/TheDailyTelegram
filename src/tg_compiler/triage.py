@@ -9,6 +9,8 @@ from tg_compiler.db import PostRecord, AnalysisRecord
 
 _NON_WORD = re.compile(r'[^\w\s]')
 
+_SEVERITY_RANK: dict[str, int] = {"CRITICAL": 4, "HIGH": 3, "MODERATE": 2, "LOW": 1}
+
 
 @dataclass
 class TriagedPost:
@@ -90,7 +92,11 @@ def triage(
                 break
         scored.append(TriagedPost(post=post, analysis=analysis, composite_score=score))
 
-    scored.sort(key=lambda t: (-t.composite_score, -t.post.timestamp.timestamp()))
+    scored.sort(key=lambda t: (
+        -t.composite_score,
+        -_SEVERITY_RANK.get(t.analysis.threat_level, 0),
+        -t.post.timestamp.timestamp(),
+    ))
 
     # Deduplicate: keep highest-scoring report per story cluster.
     # Two posts are duplicates if they share ≥35% words in summary/title

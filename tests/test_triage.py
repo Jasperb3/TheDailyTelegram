@@ -164,6 +164,34 @@ def test_category_counts_populated():
     assert result.category_counts["Analysis"] == 1
 
 
+def test_severity_tiebreaker_critical_over_high():
+    # Both posts have the same composite score (5.0 via keyword boost); CRITICAL should rank first.
+    base_ts = datetime(2026, 6, 7, 12, 0, tzinfo=timezone.utc)
+    p1, a1 = make_pair(importance=5, urgency=5, credibility=5, relevance=5,
+                       msg_id=1, summary="Critical event requiring immediate attention", timestamp=base_ts)
+    a1.threat_level = "HIGH"
+    p2, a2 = make_pair(importance=5, urgency=5, credibility=5, relevance=5,
+                       msg_id=2, summary="Another event of critical severity level found", timestamp=base_ts)
+    a2.threat_level = "CRITICAL"
+    config = TriageConfig(min_composite_score=0.0)
+    result = triage([(p1, a1), (p2, a2)], config)
+    assert result.main_items[0].post.message_id == 2  # CRITICAL outranks HIGH
+
+
+def test_severity_tiebreaker_high_over_moderate():
+    # Both posts have the same composite score; HIGH should rank above MODERATE.
+    base_ts = datetime(2026, 6, 7, 12, 0, tzinfo=timezone.utc)
+    p1, a1 = make_pair(importance=5, urgency=5, credibility=5, relevance=5,
+                       msg_id=1, summary="Moderate situation developing in the region", timestamp=base_ts)
+    a1.threat_level = "MODERATE"
+    p2, a2 = make_pair(importance=5, urgency=5, credibility=5, relevance=5,
+                       msg_id=2, summary="High severity incident reported at border crossing", timestamp=base_ts)
+    a2.threat_level = "HIGH"
+    config = TriageConfig(min_composite_score=0.0)
+    result = triage([(p1, a1), (p2, a2)], config)
+    assert result.main_items[0].post.message_id == 2  # HIGH outranks MODERATE
+
+
 def test_dedup_entity_overlap():
     # Same entities, same time window → duplicate
     base_ts = datetime(2026, 6, 7, 12, 0, tzinfo=timezone.utc)
