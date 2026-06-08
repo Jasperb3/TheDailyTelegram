@@ -50,11 +50,14 @@ class Scraper:
             datetime.now(timezone.utc) - timedelta(seconds=self._cfg.telegram.lookback_seconds)
             if last_seen == 0 else None
         )
+        iter_kwargs: dict = {"reverse": True, "limit": 500}
+        if last_seen > 0:
+            iter_kwargs["offset_id"] = last_seen
+        else:
+            iter_kwargs["offset_date"] = lookback_date
+
         try:
-            async for msg in self._client.iter_messages(
-                channel_entity, offset_id=last_seen, offset_date=lookback_date,
-                reverse=True, limit=500
-            ):
+            async for msg in self._client.iter_messages(channel_entity, **iter_kwargs):
                 if not isinstance(msg, Message):
                     if msg.id > max_id_seen:
                         max_id_seen = msg.id
