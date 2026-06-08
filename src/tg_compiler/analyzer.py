@@ -149,11 +149,40 @@ def build_messages(post: PostRecord, system_prompt: str) -> list[dict]:
     ]
 
 
+_NUM_RE = re.compile(r'\b(\d+(?:\.\d+)?)\b')
+
+
+def _check_numeric_consistency(summary: str, image_desc: str) -> bool:
+    """Return False if a number in image_desc contradicts a comparable number in summary.
+
+    Two numbers are 'comparable' if they are within the same order of magnitude
+    (ratio ≤ 10x).  They 'contradict' if they differ by more than 5% relative to
+    the smaller value.  When either text has no numbers, we assume consistent.
+    """
+    if not summary or not image_desc:
+        return True
+    s_nums = [float(x) for x in _NUM_RE.findall(summary) if float(x) > 0]
+    i_nums = [float(x) for x in _NUM_RE.findall(image_desc) if float(x) > 0]
+    if not s_nums or not i_nums:
+        return True
+    for img_n in i_nums:
+        for sum_n in s_nums:
+            if max(img_n, sum_n) / min(img_n, sum_n) > 10.0:
+                continue  # different orders of magnitude — unrelated quantities
+            if abs(img_n - sum_n) / min(img_n, sum_n) > 0.05:
+                return False
+    return True
+
+
 def _sanitize(analysis: PostAnalysis) -> PostAnalysis:
     analysis.title = _clean_title(analysis.title)
     analysis.summary = strip_dangerous_html(analysis.summary)
     analysis.key_entities = clean_entities(analysis.key_entities)
     analysis.image_description = _clean_image_insights(analysis.image_description)
+    if analysis.image_description and not _check_numeric_consistency(
+        analysis.summary, analysis.image_description
+    ):
+        analysis.image_description = None
     return analysis
 
 
