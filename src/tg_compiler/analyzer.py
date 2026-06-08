@@ -241,10 +241,15 @@ class Analyzer:
         self, channel_map: dict[int, ChannelConfig] | None = None
     ) -> int:
         posts = self._db.get_unanalysed_posts()
-        count = 0
-        for post in posts:
+        if not posts:
+            return 0
+
+        sem = asyncio.Semaphore(self._cfg.lmstudio.max_concurrent_analyses)
+
+        async def _analyse_and_save(post: PostRecord) -> None:
             channel_cfg = channel_map.get(post.channel_id) if channel_map else None
-            analysis = await self.analyze_post(post, channel_cfg)
+            async with sem:
+                analysis = await self.analyze_post(post, channel_cfg)
             self._db.insert_analysis(AnalysisRecord(
                 post_id=post.id,
                 title=analysis.title,
@@ -259,5 +264,6 @@ class Analyzer:
                 model_used=self._cfg.lmstudio.model,
                 threat_level=analysis.threat_level,
             ))
-            count += 1
-        return count
+
+        await asyncio.gather(*(_analyse_and_save(p) for p in posts))
+        return len(posts)

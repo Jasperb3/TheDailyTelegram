@@ -28,6 +28,7 @@ class LMStudioConfig(BaseModel):
     api_token: str | None = None
     temperature: float = 0.3
     max_tokens: int = 800
+    max_concurrent_analyses: int = 1
 
 
 class TriageConfig(BaseModel):
