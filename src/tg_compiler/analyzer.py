@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from tg_compiler.config import AppConfig, ChannelConfig
 from tg_compiler.db import Database, PostRecord, AnalysisRecord
-from tg_compiler.utils import clean_entities
+from tg_compiler.utils import clean_entities, strip_dangerous_html
 
 log = logging.getLogger(__name__)
 
@@ -149,6 +149,7 @@ def build_messages(post: PostRecord, system_prompt: str) -> list[dict]:
 
 def _sanitize(analysis: PostAnalysis) -> PostAnalysis:
     analysis.title = _clean_title(analysis.title)
+    analysis.summary = strip_dangerous_html(analysis.summary)
     analysis.key_entities = clean_entities(analysis.key_entities)
     analysis.image_description = _clean_image_insights(analysis.image_description)
     return analysis

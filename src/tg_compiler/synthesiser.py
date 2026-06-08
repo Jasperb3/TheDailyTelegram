@@ -13,6 +13,7 @@ from openai import OpenAI
 
 from tg_compiler.config import AppConfig
 from tg_compiler.db import Database
+from tg_compiler.utils import strip_dangerous_html
 
 log = logging.getLogger(__name__)
 
@@ -114,15 +115,35 @@ async def synthesise(config: AppConfig, posts: list[dict]) -> dict | None:
     return data
 
 
+def _sanitize_intel(intel: dict) -> dict:
+    s = strip_dangerous_html
+    return {
+        "situation_summary": s(intel["situation_summary"]),
+        "key_themes": [
+            {"theme": s(i["theme"]), "detail": s(i["detail"])}
+            for i in intel["key_themes"]
+        ],
+        "signals_and_warnings": [
+            {"signal": s(i["signal"]), "assessment": s(i["assessment"])}
+            for i in intel["signals_and_warnings"]
+        ],
+        "named_actors": [
+            {"actor": s(i["actor"]), "role": s(i["role"]), "activity": s(i["activity"])}
+            for i in intel["named_actors"]
+        ],
+    }
+
+
 def _render_front_page_md(intel: dict, target_date: date) -> str:
     env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=False)
     tmpl = env.get_template("intel_front_page.md.j2")
+    clean = _sanitize_intel(intel)
     return tmpl.render(
         date=target_date.strftime("%A, %-d %B %Y"),
-        situation_summary=intel["situation_summary"],
-        key_themes=intel["key_themes"],
-        signals_and_warnings=intel["signals_and_warnings"],
-        named_actors=intel["named_actors"],
+        situation_summary=clean["situation_summary"],
+        key_themes=clean["key_themes"],
+        signals_and_warnings=clean["signals_and_warnings"],
+        named_actors=clean["named_actors"],
     )
 
 
