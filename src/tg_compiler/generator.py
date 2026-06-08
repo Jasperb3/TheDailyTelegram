@@ -1,18 +1,16 @@
 from __future__ import annotations
 import logging
-import re
 from pathlib import Path
 from datetime import date, datetime
 
 from jinja2 import Environment, FileSystemLoader
 
 from tg_compiler.triage import BriefingContent
+from tg_compiler.utils import clean_entities
 
 log = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent.parent.parent / "templates"
-
-_ENTITY_GARBAGE = re.compile(r'[`{}<>]|json|PostAnalysis|importance_score|urgency_score')
 
 
 _THREAT_BADGES = {
@@ -27,17 +25,10 @@ def _threat_badge(threat_level: str) -> str:
     return _THREAT_BADGES.get(threat_level, "🟡 MODERATE")
 
 
-def _clean_entities(entities: list[str]) -> list[str]:
-    return [
-        e.strip() for e in entities
-        if e and len(e.strip()) <= 80 and not _ENTITY_GARBAGE.search(e)
-    ]
-
-
 def render_markdown(content: BriefingContent) -> str:
     env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=False)
     env.globals["threat_badge"] = _threat_badge
-    env.filters["clean_entities"] = _clean_entities
+    env.filters["clean_entities"] = clean_entities
     tmpl = env.get_template("briefing.md.j2")
     return tmpl.render(content=content)
 

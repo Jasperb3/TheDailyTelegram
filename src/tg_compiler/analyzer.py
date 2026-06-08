@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from tg_compiler.config import AppConfig, ChannelConfig
 from tg_compiler.db import Database, PostRecord, AnalysisRecord
+from tg_compiler.utils import clean_entities
 
 log = logging.getLogger(__name__)
 
@@ -58,21 +59,6 @@ class PostAnalysis(BaseModel):
         normalised = v.upper().strip() if v else "MODERATE"
         return normalised if normalised in _VALID_THREAT_LEVELS else "MODERATE"
 
-
-_ENTITY_GARBAGE = re.compile(
-    r'[`{}<>]|json|PostAnalysis|importance_score|urgency_score'
-    r'|title|summary|category|image_substantive|post_id|credibility|relevance|reasoning'
-)
-
-def _clean_entities(entities: list[str]) -> list[str]:
-    return [
-        e.strip() for e in entities
-        if e
-        and len(e.strip()) >= 2
-        and len(e.strip()) <= 80
-        and not re.fullmatch(r'\d+', e.strip())
-        and not _ENTITY_GARBAGE.search(e)
-    ]
 
 
 _TITLE_GARBAGE = re.compile(r'<\||\`\`\`|\{|\}|<image>|thought', re.IGNORECASE)
@@ -163,7 +149,7 @@ def build_messages(post: PostRecord, system_prompt: str) -> list[dict]:
 
 def _sanitize(analysis: PostAnalysis) -> PostAnalysis:
     analysis.title = _clean_title(analysis.title)
-    analysis.key_entities = _clean_entities(analysis.key_entities)
+    analysis.key_entities = clean_entities(analysis.key_entities)
     analysis.image_description = _clean_image_insights(analysis.image_description)
     return analysis
 
