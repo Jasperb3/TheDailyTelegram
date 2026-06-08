@@ -1,6 +1,7 @@
 import pytest
 from pydantic import ValidationError
-from tg_compiler.analyzer import PostAnalysis, parse_analysis_fallback, build_messages
+from tg_compiler.analyzer import PostAnalysis, parse_analysis_fallback, build_messages, _clean_image_insights
+from tg_compiler.utils import clean_entities
 
 
 def test_post_analysis_parses_valid_json():
@@ -52,6 +53,27 @@ def test_build_messages_text_only(sample_post):
     assert len(messages) == 2
     assert messages[0]["role"] == "system"
     assert messages[1]["role"] == "user"
+
+
+def test_entity_containing_key_entities_is_filtered():
+    entities = ['key_entities,["IRGC Aerospace Force","Hamas"]', "IRGC Aerospace Force", "Hamas"]
+    result = clean_entities(entities)
+    assert "IRGC Aerospace Force" in result
+    assert "Hamas" in result
+    assert not any("key_entities" in e for e in result)
+
+
+def test_entity_containing_bare_false_is_filtered():
+    entities = ["false", "Israel", "true", "Pentagon"]
+    result = clean_entities(entities)
+    assert "Israel" in result
+    assert "Pentagon" in result
+    assert "false" not in result
+    assert "true" not in result
+
+
+def test_image_description_with_json_artifact_returns_none():
+    assert _clean_image_insights(".json(post_analysis){image_description: null}") is None
 
 
 def test_build_messages_truncates_long_text(sample_post):

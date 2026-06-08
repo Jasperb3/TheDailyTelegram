@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from tg_compiler.config import AppConfig, ChannelConfig
 from tg_compiler.db import Database, PostRecord, AnalysisRecord
-from tg_compiler.utils import clean_entities, strip_dangerous_html
+from tg_compiler.utils import clean_entities, strip_dangerous_html, _ENTITY_GARBAGE
 
 log = logging.getLogger(__name__)
 
@@ -90,6 +90,8 @@ def _clean_image_insights(text: str | None) -> str | None:
     ):
         return None
     if len(stripped) < 10:
+        return None
+    if _ENTITY_GARBAGE.search(stripped) or '{' in stripped or '}' in stripped:
         return None
     return stripped
 
