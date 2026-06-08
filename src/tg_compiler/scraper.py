@@ -6,7 +6,7 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 from telethon import TelegramClient
-from telethon.errors import ChannelPrivateError, FloodWaitError
+from telethon.errors import ChannelPrivateError, FloodWaitError  # FloodWaitError: only fires if wait > flood_sleep_threshold
 from telethon.tl.types import Message
 
 from tg_compiler.config import AppConfig, ChannelConfig
@@ -29,6 +29,7 @@ class Scraper:
             config.telegram.session_name,
             config.telegram.api_id,
             config.telegram.api_hash,
+            flood_sleep_threshold=600,
         )
         self.channel_map: dict[int, ChannelConfig] = {}
 
@@ -110,15 +111,14 @@ class Scraper:
                 if msg.id > max_id_seen:
                     max_id_seen = msg.id
 
-            if max_id_seen > last_seen:
-                self._db.set_last_seen_id(channel_id, max_id_seen)
-
             await asyncio.sleep(self._cfg.telegram.rate_limit_delay_ms / 1000)
 
         except ChannelPrivateError:
             log.error("Channel %s is private or inaccessible", entity)
         except FloodWaitError as e:
-            log.warning("FloodWait: sleeping %d seconds", e.seconds)
-            await asyncio.sleep(e.seconds)
+            log.warning("FloodWait for %s exceeded threshold (%ds) — partial results saved", entity, e.seconds)
+        finally:
+            if max_id_seen > last_seen:
+                self._db.set_last_seen_id(channel_id, max_id_seen)
 
         return collected
