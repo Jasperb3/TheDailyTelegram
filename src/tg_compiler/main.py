@@ -32,12 +32,11 @@ async def run_batch(config: AppConfig) -> None:
     db.init_schema()
     today = date.today()
 
-    channel_map = {(c.id or 0): c for c in config.telegram.channels}
-
     async with Scraper(config, db) as scraper:
         for channel_cfg in config.telegram.channels:
             posts = await scraper.scrape_channel(channel_cfg)
             log.info("Scraped %d new posts from %s", len(posts), channel_cfg.slug)
+        channel_map = scraper.channel_map
 
     analyzer = Analyzer(config, db)
     count = await analyzer.process_unanalysed(channel_map)

@@ -30,6 +30,7 @@ class Scraper:
             config.telegram.api_id,
             config.telegram.api_hash,
         )
+        self.channel_map: dict[int, ChannelConfig] = {}
 
     async def __aenter__(self):
         await self._client.start()
@@ -42,6 +43,7 @@ class Scraper:
         entity = channel_cfg.username or channel_cfg.id
         channel_entity = await self._client.get_entity(entity)
         channel_id = channel_entity.id
+        self.channel_map[channel_id] = channel_cfg
         last_seen = self._db.get_last_seen_id(channel_id)
         collected: list[PostRecord] = []
         max_id_seen = last_seen
