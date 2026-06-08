@@ -10,7 +10,7 @@ telegram:
   lookback_seconds: 604800   # how far back to fetch on first run (default: 1 week)
 
 lmstudio:
-  model: "google/gemma-4-12b"
+  model: "google/gemma-4-12b-qat"
   server_host: "localhost"   # set to an IP if LM Studio runs on another machine
   server_port: 1234
   # api_token: "lms-..."    # optional; overridden by LM_API_TOKEN env var
