@@ -175,6 +175,7 @@ def test_severity_tiebreaker_critical_over_high():
     a2.threat_level = "CRITICAL"
     config = TriageConfig(min_composite_score=0.0)
     result = triage([(p1, a1), (p2, a2)], config)
+    assert len(result.main_items) == 2  # both posts survive dedup
     assert result.main_items[0].post.message_id == 2  # CRITICAL outranks HIGH
 
 
@@ -189,6 +190,7 @@ def test_severity_tiebreaker_high_over_moderate():
     a2.threat_level = "HIGH"
     config = TriageConfig(min_composite_score=0.0)
     result = triage([(p1, a1), (p2, a2)], config)
+    assert len(result.main_items) == 2  # both posts survive dedup
     assert result.main_items[0].post.message_id == 2  # HIGH outranks MODERATE
 
 
