@@ -21,6 +21,7 @@ _No high-priority items today._
 {% set username = content.channel_links.get(channel, '') %}
 
 {% for item in content.main_items if item.post.channel_name == channel %}
+{% if item.analysis.summary %}
 ### {{ threat_badge(item.analysis.threat_level) }} · `{{ item.analysis.category }}` · **{{ item.analysis.title if item.analysis.title else item.analysis.summary[:90] ~ ('…' if item.analysis.summary|length > 90 else '') }}**
 
 <small>{{ item.post.timestamp.strftime('%H:%M UTC') }} · Score {{ "%.1f"|format(item.composite_score) }}/5 · ID {{ item.post.message_id }}{% if username %} · [↗ t.me](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %}</small>
@@ -43,6 +44,7 @@ _No high-priority items today._
 {% endfor %}
 {% endif %}
 
+{% endif %}
 ---
 {% else %}
 _No posts above threshold for this channel._

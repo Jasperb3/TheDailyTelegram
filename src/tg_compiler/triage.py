@@ -99,6 +99,9 @@ def triage(
     for post, analysis in pairs:
         if not analysis.summary or len(analysis.summary.strip()) < 10:
             continue
+        if not all([analysis.importance_score, analysis.urgency_score,
+                    analysis.credibility_score, analysis.relevance_score]):
+            continue
         score = _composite(analysis)
         text_lower = (post.text or "").lower()
         for kw in config.keywords:

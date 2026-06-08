@@ -232,6 +232,25 @@ def test_dedup_24h_entity_cluster_collapses_duplicate():
     assert kept.post.message_id == 1  # higher-scored post wins
 
 
+def test_null_score_excluded_from_main_and_appendix():
+    # A post with a zero importance score (corrupt record) must be excluded entirely.
+    post, analysis = make_pair(importance=0, summary="A valid summary that is long enough to pass")
+    config = TriageConfig(min_composite_score=0.0)
+    result = triage([(post, analysis)], config)
+    assert len(result.main_items) == 0
+    assert len(result.appendix_items) == 0
+
+
+def test_none_score_excluded_from_main_and_appendix():
+    # A post with a None score (missing column from old DB migration) must be excluded entirely.
+    post, analysis = make_pair(summary="A valid summary that is long enough to pass")
+    analysis.urgency_score = None
+    config = TriageConfig(min_composite_score=0.0)
+    result = triage([(post, analysis)], config)
+    assert len(result.main_items) == 0
+    assert len(result.appendix_items) == 0
+
+
 def test_dedup_24h_entity_cluster_not_triggered_with_only_3_entities():
     # Two posts sharing only 3 entities with a 3-hour gap → NOT collapsed
     # (gap > 2h so old rule doesn't apply; new rule requires 4 shared entities)
