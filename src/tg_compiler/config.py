@@ -8,8 +8,8 @@ class ChannelConfig(BaseModel):
     slug: str
     username: str | None = None
     id: int | None = None
-    priority: float = 1.0
-    custom_prompt: str | None = None
+    priority: float = 1.0          # multiplier applied to composite score (0.1–2.0)
+    custom_prompt: str | None = None  # override the default LLM system prompt for this channel
 
 
 class TelegramConfig(BaseModel):
@@ -28,7 +28,7 @@ class LMStudioConfig(BaseModel):
     api_token: str | None = None
     temperature: float = 0.3
     max_tokens: int = 800
-    max_concurrent_analyses: int = 1
+    max_concurrent_analyses: int = 1  # parallel LLM calls; increase if LM Studio can handle it
 
 
 class TriageConfig(BaseModel):
@@ -36,20 +36,15 @@ class TriageConfig(BaseModel):
     keyword_boost: float = 0.5
     min_composite_score: float = 2.5
     max_main_items: int = 50
-    dedup_window_secs: int = 7200
-    entity_cluster_window_secs: int = 86400
-    categories_of_interest: list[str] = Field(
-        default_factory=lambda: ["Breaking News", "Official Statement", "Analysis"]
-    )
+    dedup_window_secs: int = 7200       # max age gap (seconds) for cross-channel dedup
+    entity_cluster_window_secs: int = 86400  # wider window for entity-cluster dedup (24h)
 
 
 class GenerationConfig(BaseModel):
     output_dir: str = "./briefings"
-    timezone: str = "UTC"
-    generate_at: str = "23:59"
-    include_raw_text: bool = False
-    include_all_images: bool = True
-    synthesis_post_limit: int = 20
+    generate_at: str = "23:59"          # time for daily auto-generation in daemon mode (HH:MM, interpreted in timezone below)
+    timezone: str = "UTC"               # IANA timezone name for generate_at scheduling (e.g. "Europe/London")
+    synthesis_post_limit: int = 20      # number of top posts fed to the intelligence front page
 
 
 class StorageConfig(BaseModel):

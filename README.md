@@ -12,12 +12,12 @@ Telegram channels
    analyzer.py  ←  LM Studio VLM
    (title, scores, category, threat_level, key entities)
                       ↓
-     triage.py  (composite score, keyword boost, dedup, main/appendix split)
+     triage.py  (composite score × channel priority, keyword boost, dedup, main/appendix split)
                       ↓
-   generator.py  →  briefings/YYYY-MM-DD/TheDailyTelegram_YYYY-MM-DD-HH:MM:SS.pdf
+   generator.py  →  briefings/YYYY-MM-DD/TheDailyTelegram_YYYY-MM-DD_HHMMSS.pdf
                       ↓
   synthesiser.py  ←  LM Studio (intelligence synthesis)
-   (top 20 posts → situation summary, key themes, signals & warnings, named actors)
+   (top N posts → situation summary, key themes, signals & warnings, named actors)
                       ↓
    prepends intelligence front page to briefing PDF
 ```
@@ -99,38 +99,44 @@ Open `config.yaml` and edit:
 
 ```yaml
 telegram:
-  api_id: 123456          # your integer API ID from my.telegram.org
-  api_hash: "abc123..."   # your API hash from my.telegram.org
-  session_name: "briefing_session"   # filename for the session (no extension needed)
+  api_id: 123456          # your integer API ID from my.telegram.org — or use TG_API_ID env var
+  api_hash: "abc123..."   # your API hash from my.telegram.org — or use TG_API_HASH env var
+  session_name: "briefing_session"   # filename for the Telegram session (no extension needed)
   channels:
-    - username: "@channelname"   # public @username, or use id: 123456789 for private
-      slug: "news"               # short identifier used in file paths and reports
-      priority: 0.8
+    - username: "@channelname"   # public @username, or use id: 123456789 for private channels
+      slug: "news"               # short label used in file paths and briefing headings
+      priority: 1.0              # composite score multiplier (0.1–2.0); higher = ranked more prominently
+      # custom_prompt: |         # optional: override the LLM system prompt for this channel only
+      #   You are an analyst specialised in...
     - username: "@another_channel"
       slug: "intel"
       priority: 0.8
-  rate_limit_delay_ms: 500      # pause between channel scrapes (be conservative)
+  rate_limit_delay_ms: 500      # pause between channel scrapes in ms (be conservative with Telegram)
   lookback_seconds: 604800      # how far back to fetch on first run (default: 1 week)
                                 # use --batch --since HH:MM for a one-off lookback instead
 
 lmstudio:
-  model: "google/gemma-4-12b"   # must match the model name shown in LM Studio
-  server_host: "localhost"       # IP or hostname if LM Studio is on another machine
+  model: "google/gemma-4-12b-qat"  # must match the model name shown in LM Studio
+  server_host: "localhost"          # IP or hostname if LM Studio is on another machine
   server_port: 1234
-  # api_token: "lms-..."        # optional; overridden by LM_API_TOKEN env var
+  # api_token: "lms-..."           # optional; overridden by LM_API_TOKEN env var
   temperature: 0.3
   max_tokens: 800
+  max_concurrent_analyses: 1       # parallel LLM calls; increase if your GPU can handle it
 
 triage:
-  keywords: ["urgent", "breaking", "launch"]  # words that boost post score
-  keyword_boost: 0.5        # added to composite score when a keyword matches
-  min_composite_score: 2.5  # posts below this go to the Appendix section
+  keywords: ["urgent", "breaking", "launch"]  # words that add keyword_boost to a post's score
+  keyword_boost: 0.5        # score added when a keyword matches (total capped at 5.0)
+  min_composite_score: 3.5  # posts below this go to the Appendix section
   max_main_items: 50        # hard cap on main briefing length (overflow → appendix)
+  dedup_window_secs: 7200   # time window for cross-channel story deduplication (default: 2h)
+  entity_cluster_window_secs: 86400  # wider dedup window for entity-cluster matching (default: 24h)
 
 generation:
-  output_dir: "./briefings"   # where PDFs are saved
-  timezone: "UTC"
-  generate_at: "23:59"        # time for daily auto-generation in daemon mode (HH:MM)
+  output_dir: "./briefings"   # where PDFs and markdown are saved
+  generate_at: "23:59"        # daily auto-generation time in daemon mode (HH:MM, in timezone below)
+  timezone: "UTC"             # IANA timezone for generate_at (e.g. "Europe/London")
+  synthesis_post_limit: 20    # number of top posts fed to the intelligence front page
 
 storage:
   db_path: "./data/briefing.db"
@@ -197,8 +203,8 @@ What happens:
 2. For each channel: fetches messages since the last run (up to 500), downloads attached photos
 3. Sends each new post to LM Studio for analysis — headline title, importance, urgency, credibility, relevance, category, threat level, and key entities
 4. Runs triage: scores posts, applies keyword boosts, deduplicates cross-channel reports of the same story, splits into main/appendix
-5. Generates `briefings/YYYY-MM-DD/TheDailyTelegram_YYYY-MM-DD-HH:MM:SS.pdf`
-6. Sends the top 20 posts by composite score to LM Studio for intelligence synthesis
+5. Generates `briefings/YYYY-MM-DD/TheDailyTelegram_YYYY-MM-DD_HHMMSS.pdf`
+6. Sends the top N posts (configurable via synthesis_post_limit) by composite score to LM Studio for intelligence synthesis
 7. Prepends a structured intelligence front page (situation summary, key themes, signals & warnings, named actors) to the briefing PDF
 8. Disconnects
 
@@ -209,9 +215,9 @@ Typical log output:
 2026-06-08 09:00:01 INFO Scraped 14 new posts from news
 2026-06-08 09:00:02 INFO Scraped 3 new posts from intel
 2026-06-08 09:00:45 INFO Analysed 17 posts
-2026-06-08 09:00:46 INFO Briefing generated: briefings/2026-06-08/TheDailyTelegram_2026-06-08-09:00:46.pdf
+2026-06-08 09:00:46 INFO Briefing generated: briefings/2026-06-08/TheDailyTelegram_2026-06-08_090046.pdf
 2026-06-08 09:00:47 INFO Synthesising intelligence assessment from 17 posts…
-2026-06-08 09:01:30 INFO Intelligence front page prepended → briefings/2026-06-08/TheDailyTelegram_2026-06-08-09:00:46.pdf
+2026-06-08 09:01:30 INFO Intelligence front page prepended → briefings/2026-06-08/TheDailyTelegram_2026-06-08_090046.pdf
 ```
 
 ### Re-scraping from a specific time — `--since`
@@ -276,7 +282,7 @@ What happens when a new message arrives:
 
 What happens at `generate_at` time each day:
 1. Runs triage on all posts analysed that day
-2. Generates `briefings/YYYY-MM-DD/TheDailyTelegram_YYYY-MM-DD-HH:MM:SS.pdf`
+2. Generates `briefings/YYYY-MM-DD/TheDailyTelegram_YYYY-MM-DD_HHMMSS.pdf`
 3. Purges media directories older than `retention_days`
 
 ### Stopping the daemon
@@ -315,7 +321,7 @@ python -m tg_compiler.main --analyse
 python -m tg_compiler.main --analyse --since 2026-06-07
 ```
 
-`--analyse` finds the most recent `TheDailyTelegram_*.pdf` in the date subdirectory, synthesises the top 20 posts via LM Studio, and prepends the front page. Under `--batch` this runs automatically, so `--analyse` is mainly useful after a standalone `--generate`.
+`--analyse` finds the most recent `TheDailyTelegram_*.pdf` in the date subdirectory, synthesises the top N posts (synthesis_post_limit) via LM Studio, and prepends the front page. Under `--batch` this runs automatically, so `--analyse` is mainly useful after a standalone `--generate`.
 
 ---
 
@@ -326,7 +332,7 @@ Reports are written to date-named subdirectories under `./briefings/` (configura
 ```
 briefings/
 └── 2026-06-08/
-    ├── TheDailyTelegram_2026-06-08-09:00:46.pdf   ← primary report (with front page)
+    ├── TheDailyTelegram_2026-06-08_090046.pdf   ← primary report (with front page)
     └── briefing_2026-06-08.md                      ← Markdown source
 ```
 
@@ -343,7 +349,7 @@ Each `--batch` or `--generate` run writes a new uniquely timestamped PDF. The `.
 **Executive Summary** — top 10 posts across all channels, one line each with threat level badge, category, headline, and channel attribution.
 
 **Per-channel sections** — posts that cleared `min_composite_score`, sorted by composite score descending, capped at `max_main_items` total (excess goes to the Appendix). Cross-channel duplicates (same story reported by multiple channels within 2 hours, detected by word overlap ≥28% or ≥3 shared named entities) are deduplicated — only the highest-scoring report appears. Each entry shows:
-- **Threat level badge**: 🔴 CRITICAL · 🟠 HIGH · 🟡 MODERATE · 🟢 LOW
+- **Threat level badge**: ■ CRITICAL (red) · ■ HIGH (orange) · ■ MODERATE (amber) · ■ LOW (green)
 - **Category** in backtick style: `` `Breaking News` `` / `` `Analysis` `` / `` `Official Statement` `` / `` `Rumor` `` / `` `Media` `` / `` `Other` ``
 - LLM-generated headline title (5-10 words)
 - Post timestamp and direct link to the original Telegram post (↗ t.me)
@@ -361,10 +367,10 @@ Each `--batch` or `--generate` run writes a new uniquely timestamped PDF. The `.
 
 | Badge | Level | Meaning |
 |---|---|---|
-| 🔴 | CRITICAL | Imminent risk of mass casualties, confirmed state-level military action underway, nuclear/chemical/biological threat, or active attack on critical infrastructure |
-| 🟠 | HIGH | Confirmed armed conflict development, significant political crisis, major terror attack, or credible escalation warning from a named senior state official |
-| 🟡 | MODERATE | Ongoing conflict updates, diplomatic developments, significant arrests or detentions, or unverified but plausible escalation claims |
-| 🟢 | LOW | Background context, routine troop movement reports, unverified rumours, social media content, statistical or historical reports |
+| ■ red | CRITICAL | Imminent risk of mass casualties, confirmed state-level military action underway, nuclear/chemical/biological threat, or active attack on critical infrastructure |
+| ■ orange | HIGH | Confirmed armed conflict development, significant political crisis, major terror attack, or credible escalation warning from a named senior state official |
+| ■ amber | MODERATE | Ongoing conflict updates, diplomatic developments, significant arrests or detentions, or unverified but plausible escalation claims |
+| ■ green | LOW | Background context, routine troop movement reports, unverified rumours, social media content, statistical or historical reports |
 
 ### Composite scoring formula
 
@@ -411,7 +417,7 @@ Delete `<session_name>.session` and re-authenticate by running `--batch` again.
 
 ```bash
 source .venv/bin/activate
-pytest                          # all 66 tests
+pytest                          # all tests
 pytest tests/test_db.py -v      # single file
 pytest tests/test_triage.py::test_composite_score_formula -v   # single test
 ```

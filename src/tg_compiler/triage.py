@@ -92,6 +92,7 @@ def triage(
     pairs: list[tuple[PostRecord, AnalysisRecord]],
     config: TriageConfig,
     today: date | None = None,
+    channel_priorities: dict[str, float] | None = None,
 ) -> BriefingContent:
     today = today or date.today()
     scored: list[TriagedPost] = []
@@ -102,12 +103,14 @@ def triage(
         if not all([analysis.importance_score, analysis.urgency_score,
                     analysis.credibility_score, analysis.relevance_score]):
             continue
-        score = _composite(analysis)
+        priority = (channel_priorities or {}).get(post.channel_name, 1.0)
+        score = _composite(analysis) * priority
         text_lower = (post.text or "").lower()
         for kw in config.keywords:
             if kw.lower() in text_lower:
                 score = min(5.0, score + config.keyword_boost)
                 break
+        score = min(5.0, score)
         scored.append(TriagedPost(post=post, analysis=analysis, composite_score=score))
 
     scored.sort(key=lambda t: (

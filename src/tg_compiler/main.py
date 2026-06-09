@@ -28,7 +28,8 @@ async def generate_daily_briefing(config: AppConfig, target_date: date, db: Data
     from tg_compiler.generator import generate_briefing
 
     pairs = db.get_days_posts_with_analyses(target_date.isoformat())
-    content = do_triage(pairs, config.triage, today=target_date)
+    channel_priorities = {ch.slug: ch.priority for ch in config.telegram.channels}
+    content = do_triage(pairs, config.triage, today=target_date, channel_priorities=channel_priorities)
     content.channel_links = {
         ch.slug: ch.username.lstrip("@")
         for ch in config.telegram.channels
@@ -83,15 +84,21 @@ def purge_old_media(media_dir: str, retention_days: int) -> int:
 
 
 async def schedule_daily_generation(config: AppConfig) -> None:
+    import zoneinfo
     h, m = map(int, config.generation.generate_at.split(":"))
+    try:
+        tz = zoneinfo.ZoneInfo(config.generation.timezone)
+    except Exception:
+        log.warning("Unknown timezone %r — falling back to UTC", config.generation.timezone)
+        tz = zoneinfo.ZoneInfo("UTC")
     while True:
-        now = datetime.now()
+        now = datetime.now(tz)
         target = now.replace(hour=h, minute=m, second=0, microsecond=0)
         if target <= now:
             target += timedelta(days=1)
         await asyncio.sleep((target - now).total_seconds())
 
-        today = date.today()
+        today = datetime.now(tz).date()
         db = Database(config.storage.db_path)
         db.init_schema()
         await generate_daily_briefing(config, today, db)

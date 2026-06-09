@@ -1,35 +1,44 @@
 telegram:
-  api_id: 123456
-  api_hash: "your_api_hash"
-  session_name: "briefing_session"
+  api_id: 123456                    # integer API ID from my.telegram.org/apps
+  api_hash: "your_api_hash_here"    # hex string from my.telegram.org/apps — or use TG_API_HASH env var
+  session_name: "briefing_session"  # filename for the Telegram session (no extension)
   channels:
-    - username: "@news_channel"
-      slug: "news"
+    - username: "@channelname"      # public @username, or omit and use id: below
+      slug: "news"                  # short label used in file paths and the briefing
+      priority: 1.0                 # composite score multiplier (0.1–2.0); higher = channel ranked more prominently
+      # id: 1234567890              # numeric channel ID — use for private channels instead of username
+      # custom_prompt: |            # override the default LLM system prompt for this channel only
+      #   You are an analyst specialised in ...
+    - username: "@another_channel"
+      slug: "intel"
       priority: 0.8
-  rate_limit_delay_ms: 500
-  lookback_seconds: 604800   # how far back to fetch on first run (default: 1 week)
+  rate_limit_delay_ms: 500          # pause between channel scrapes in ms (be conservative with Telegram)
+  lookback_seconds: 604800          # how far back to fetch on first run / after cursor reset (default: 1 week)
 
 lmstudio:
-  model: "google/gemma-4-12b-qat"
-  server_host: "localhost"   # set to an IP if LM Studio runs on another machine
+  model: "google/gemma-4-12b-qat"   # model name as shown in LM Studio (must be loaded)
+  server_host: "localhost"           # IP or hostname if LM Studio runs on another machine
   server_port: 1234
-  # api_token: "lms-..."    # optional; overridden by LM_API_TOKEN env var
+  # api_token: "lms-..."            # optional — overridden by LM_API_TOKEN env var
   temperature: 0.3
   max_tokens: 800
+  max_concurrent_analyses: 1        # parallel LLM calls per batch run; increase if your hardware allows
 
 triage:
-  keywords: ["urgent", "breaking", "launch"]
-  keyword_boost: 0.5
-  min_composite_score: 3.5
-  max_main_items: 50
+  keywords: ["urgent", "breaking", "launch"]  # words that add keyword_boost to a post's score
+  keyword_boost: 0.5        # score added when a keyword matches (capped at 5.0 total)
+  min_composite_score: 3.5  # posts below this threshold go to the Appendix section
+  max_main_items: 50        # hard cap on main briefing length (excess → appendix)
+  dedup_window_secs: 7200   # time window for cross-channel deduplication (default: 2h)
+  entity_cluster_window_secs: 86400  # wider entity-cluster dedup window (default: 24h)
 
 generation:
-  output_dir: "./briefings"
-  timezone: "UTC"
-  generate_at: "23:59"
-  synthesis_post_limit: 20   # number of top posts fed to the intelligence front page
+  output_dir: "./briefings"         # where PDFs and markdown are saved
+  generate_at: "23:59"              # daily auto-generation time in daemon mode (HH:MM, in the timezone below)
+  timezone: "UTC"                   # IANA timezone for generate_at scheduling (e.g. "Europe/London", "America/New_York")
+  synthesis_post_limit: 20          # number of top posts fed to the intelligence front page
 
 storage:
   db_path: "./data/briefing.db"
   media_dir: "./data/media"
-  retention_days: 30
+  retention_days: 30                # delete media older than this many days
