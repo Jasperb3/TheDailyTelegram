@@ -74,7 +74,18 @@ async def synthesise(config: AppConfig, posts: list[dict]) -> dict | None:
         log.error("LM Studio not reachable — cannot generate intelligence front page: %s", e)
         return None
 
-    posts_json = json.dumps(posts, ensure_ascii=False, default=str)
+    # Keep only the fields the synthesis LLM needs; drop scoring/routing metadata.
+    synthesis_posts = [
+        {
+            "title": p.get("title", ""),
+            "summary": p.get("summary", ""),
+            "category": p.get("category", ""),
+            "threat_level": p.get("threat_level", ""),
+            "entities": p.get("entities", []),
+        }
+        for p in posts
+    ]
+    posts_json = json.dumps(synthesis_posts, ensure_ascii=False, default=str)
     user_message = f"{posts_json}\n{_SYNTHESIS_INSTRUCTIONS}"
 
     try:
