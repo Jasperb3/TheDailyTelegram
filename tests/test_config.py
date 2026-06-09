@@ -40,3 +40,12 @@ def test_env_override(tmp_path, monkeypatch):
     cfg = load_config(str(f), env_override=True)
     assert cfg.telegram.api_id == 999
     assert cfg.telegram.api_hash == "envhash"
+
+
+def test_synthesis_post_limit_rejected(tmp_path):
+    """synthesis_post_limit was removed; config must reject it."""
+    yaml_with_old_field = MINIMAL_YAML + "\ngeneration:\n  synthesis_post_limit: 20\n"
+    f = tmp_path / "config.yaml"
+    f.write_text(yaml_with_old_field)
+    with pytest.raises(ValidationError):
+        load_config(str(f))

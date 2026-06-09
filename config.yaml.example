@@ -36,7 +36,7 @@ generation:
   output_dir: "./briefings"         # where PDFs and markdown are saved
   generate_at: "23:59"              # daily auto-generation time in daemon mode (HH:MM, in the timezone below)
   timezone: "UTC"                   # IANA timezone for generate_at scheduling (e.g. "Europe/London", "America/New_York")
-  synthesis_post_limit: 20          # number of top posts fed to the intelligence front page
+  # Intelligence Assessment coverage is controlled by triage.max_main_items (default: 50)
 
 storage:
   db_path: "./data/briefing.db"
