@@ -27,6 +27,7 @@ generation:
   output_dir: "./briefings"
   timezone: "UTC"
   generate_at: "23:59"
+  synthesis_post_limit: 20   # number of top posts fed to the intelligence front page
 
 storage:
   db_path: "./data/briefing.db"

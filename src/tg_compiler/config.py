@@ -49,6 +49,7 @@ class GenerationConfig(BaseModel):
     generate_at: str = "23:59"
     include_raw_text: bool = False
     include_all_images: bool = True
+    synthesis_post_limit: int = 20
 
 
 class StorageConfig(BaseModel):

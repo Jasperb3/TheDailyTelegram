@@ -198,7 +198,7 @@ async def run_analysis(config: AppConfig, target_date: date) -> None:
     db = Database(config.storage.db_path)
     db.init_schema()
 
-    posts = db.get_top_posts_for_date(date_str)
+    posts = db.get_top_posts_for_date(date_str, limit=config.generation.synthesis_post_limit)
     if not posts:
         log.error("No analysed posts found for %s — cannot generate intelligence front page", date_str)
         return
