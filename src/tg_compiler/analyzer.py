@@ -277,6 +277,9 @@ class Analyzer:
 
         sem = asyncio.Semaphore(self._cfg.lmstudio.max_concurrent_analyses)
 
+        from tqdm import tqdm
+        bar = tqdm(total=len(posts), desc="Analysing posts", unit="post")
+
         async def _analyse_and_save(post: PostRecord) -> None:
             channel_cfg = channel_map.get(post.channel_id) if channel_map else None
             async with sem:
@@ -295,6 +298,10 @@ class Analyzer:
                 model_used=self._cfg.lmstudio.model,
                 threat_level=analysis.threat_level,
             ))
+            bar.update(1)
 
-        await asyncio.gather(*(_analyse_and_save(p) for p in posts))
+        try:
+            await asyncio.gather(*(_analyse_and_save(p) for p in posts))
+        finally:
+            bar.close()
         return len(posts)

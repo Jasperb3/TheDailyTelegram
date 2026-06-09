@@ -47,8 +47,9 @@ async def run_batch(config: AppConfig) -> None:
     db.init_schema()
     today = date.today()
 
+    from tqdm import tqdm
     async with Scraper(config, db) as scraper:
-        for channel_cfg in config.telegram.channels:
+        for channel_cfg in tqdm(config.telegram.channels, desc="Scraping channels", unit="channel"):
             posts = await scraper.scrape_channel(channel_cfg)
             log.info("Scraped %d new posts from %s", len(posts), channel_cfg.slug)
         channel_map = scraper.channel_map
