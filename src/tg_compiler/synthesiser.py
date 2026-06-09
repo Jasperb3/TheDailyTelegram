@@ -74,7 +74,18 @@ async def synthesise(config: AppConfig, posts: list[dict]) -> dict | None:
         log.error("LM Studio not reachable — cannot generate intelligence front page: %s", e)
         return None
 
-    posts_json = json.dumps(posts, ensure_ascii=False, default=str)
+    # Keep only the fields the synthesis LLM needs; drop scoring/routing metadata.
+    synthesis_posts = [
+        {
+            "title": p.get("title", ""),
+            "summary": p.get("summary", ""),
+            "category": p.get("category", ""),
+            "threat_level": p.get("threat_level", ""),
+            "entities": p.get("entities", []),
+        }
+        for p in posts
+    ]
+    posts_json = json.dumps(synthesis_posts, ensure_ascii=False, default=str)
     user_message = f"{posts_json}\n{_SYNTHESIS_INSTRUCTIONS}"
 
     try:
@@ -93,18 +104,42 @@ async def synthesise(config: AppConfig, posts: list[dict]) -> dict | None:
         log.error("LM Studio not reachable — cannot generate intelligence front page: %s", e)
         return None
 
-    raw = response.choices[0].message.content or ""
-    log.debug("Synthesis raw response: %s", raw)
+    choice = response.choices[0]
+    raw = choice.message.content or ""
+    log.debug("Synthesis raw response (finish_reason=%s): %s", choice.finish_reason, raw)
+
+    if not raw.strip():
+        log.error(
+            "Intelligence synthesis failed: LM Studio returned empty content "
+            "(finish_reason=%r, prompt_tokens=%s, completion_tokens=%s)",
+            choice.finish_reason,
+            getattr(response.usage, "prompt_tokens", "?"),
+            getattr(response.usage, "completion_tokens", "?"),
+        )
+        return None
 
     # Strip markdown fences if the model wrapped the JSON despite instructions
     stripped = raw.strip()
     if stripped.startswith("```"):
         stripped = stripped.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
 
+    if not stripped:
+        log.error(
+            "Intelligence synthesis failed: content was only markdown fences "
+            "(finish_reason=%r, raw=%r)",
+            choice.finish_reason,
+            raw[:200],
+        )
+        return None
+
     try:
         data = json.loads(stripped)
     except json.JSONDecodeError as e:
-        log.error("Intelligence synthesis failed: JSON parse error: %s", e)
+        log.error(
+            "Intelligence synthesis failed: JSON parse error: %s — raw content: %r",
+            e,
+            raw[:500],
+        )
         return None
 
     error = _validate_intel(data)
@@ -132,6 +167,22 @@ def _sanitize_intel(intel: dict) -> dict:
             for i in intel["named_actors"]
         ],
     }
+
+
+def _triaged_to_dicts(main_items: list) -> list[dict]:
+    return [
+        {
+            "title": item.analysis.title or "",
+            "summary": item.analysis.summary or "",
+            "category": item.analysis.category or "Other",
+            "threat_level": item.analysis.threat_level,
+            "composite_score": item.composite_score,
+            "channel_slug": item.post.channel_name,
+            "timestamp": item.post.timestamp.isoformat(),
+            "entities": item.analysis.key_entities,
+        }
+        for item in main_items
+    ]
 
 
 def _render_front_page_md(intel: dict, target_date: date) -> str:
@@ -184,23 +235,38 @@ def _prepend_pdf(front_page_path: Path, briefing_path: Path) -> None:
         raise
 
 
-async def run_analysis(config: AppConfig, target_date: date) -> None:
+async def run_analysis(config: AppConfig, target_date: date, main_items=None) -> None:
     date_str = target_date.isoformat()
     date_dir = Path(config.generation.output_dir) / date_str
 
-    # Find the most recent TheDailyTelegram PDF in the date subdirectory
     pdfs = sorted(date_dir.glob("TheDailyTelegram_*.pdf")) if date_dir.exists() else []
     if not pdfs:
         log.error("No briefing found for %s. Run --batch first.", date_str)
         return
-    briefing_path = pdfs[-1]  # latest by timestamped filename
+    briefing_path = pdfs[-1]
 
-    db = Database(config.storage.db_path)
-    db.init_schema()
+    if main_items is None:
+        from tg_compiler.triage import triage as do_triage
+        db = Database(config.storage.db_path)
+        db.init_schema()
+        pairs = db.get_days_posts_with_analyses(date_str)
+        if not pairs:
+            log.error(
+                "No analysed posts found for %s — cannot generate intelligence front page",
+                date_str,
+            )
+            return
+        channel_priorities = {ch.slug: ch.priority for ch in config.telegram.channels}
+        content = do_triage(pairs, config.triage, today=target_date, channel_priorities=channel_priorities)
+        posts = _triaged_to_dicts(content.main_items)
+    else:
+        posts = _triaged_to_dicts(main_items)
 
-    posts = db.get_top_posts_for_date(date_str, limit=config.generation.synthesis_post_limit)
     if not posts:
-        log.error("No analysed posts found for %s — cannot generate intelligence front page", date_str)
+        log.error(
+            "No posts to synthesise for %s — cannot generate intelligence front page",
+            date_str,
+        )
         return
 
     log.info("Synthesising intelligence assessment from %d posts…", len(posts))

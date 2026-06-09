@@ -23,8 +23,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 TEMPLATES_DIR = Path(__file__).parent.parent.parent / "templates"
 
 
-async def generate_daily_briefing(config: AppConfig, target_date: date, db: Database) -> str:
-    from tg_compiler.triage import triage as do_triage
+async def generate_daily_briefing(config: AppConfig, target_date: date, db: Database) -> tuple[str, "BriefingContent"]:
+    from tg_compiler.triage import triage as do_triage, BriefingContent
     from tg_compiler.generator import generate_briefing
 
     pairs = db.get_days_posts_with_analyses(target_date.isoformat())
@@ -37,7 +37,7 @@ async def generate_daily_briefing(config: AppConfig, target_date: date, db: Data
     }
     path = generate_briefing(content, config.generation.output_dir, pdf=True)
     log.info("Briefing generated: %s", path)
-    return path
+    return path, content
 
 
 async def run_batch(config: AppConfig) -> None:
@@ -61,8 +61,8 @@ async def run_batch(config: AppConfig) -> None:
     count = await analyzer.process_unanalysed(channel_map)
     log.info("Analysed %d posts", count)
 
-    await generate_daily_briefing(config, today, db)
-    await run_analysis(config, today)
+    _, content = await generate_daily_briefing(config, today, db)
+    await run_analysis(config, today, main_items=content.main_items)
 
 
 def purge_old_media(media_dir: str, retention_days: int) -> int:
@@ -84,6 +84,7 @@ def purge_old_media(media_dir: str, retention_days: int) -> int:
 
 
 async def schedule_daily_generation(config: AppConfig) -> None:
+    from tg_compiler.synthesiser import run_analysis
     import zoneinfo
     h, m = map(int, config.generation.generate_at.split(":"))
     try:
@@ -101,7 +102,8 @@ async def schedule_daily_generation(config: AppConfig) -> None:
         today = datetime.now(tz).date()
         db = Database(config.storage.db_path)
         db.init_schema()
-        await generate_daily_briefing(config, today, db)
+        _, content = await generate_daily_briefing(config, today, db)
+        await run_analysis(config, today, main_items=content.main_items)
 
         removed = purge_old_media(config.storage.media_dir, config.storage.retention_days)
         log.info("Daily briefing complete. Purged %d old media directories.", removed)
@@ -261,7 +263,7 @@ def main() -> None:
     elif args.generate:
         db = Database(cfg.storage.db_path)
         db.init_schema()
-        out = asyncio.run(generate_daily_briefing(cfg, date.today(), db))
+        out, _ = asyncio.run(generate_daily_briefing(cfg, date.today(), db))
         print(f"Generated: {out}")
 
 

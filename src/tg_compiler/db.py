@@ -195,38 +195,6 @@ class Database:
             result.append((post, analysis))
         return result
 
-    def get_top_posts_for_date(self, date_str: str, limit: int = 20) -> list[dict]:
-        rows = self._conn.execute(
-            """SELECT
-                   a.title,
-                   a.summary,
-                   a.category,
-                   COALESCE(a.threat_level, 'MODERATE') as threat_level,
-                   (0.4*a.importance_score + 0.3*a.urgency_score
-                    + 0.2*a.credibility_score + 0.1*a.relevance_score) as composite_score,
-                   p.channel_name as channel_slug,
-                   p.timestamp,
-                   a.key_entities
-               FROM analyses a
-               JOIN posts p ON p.id = a.post_id
-               WHERE DATE(p.timestamp) = ?
-               ORDER BY composite_score DESC
-               LIMIT ?""",
-            (date_str, limit),
-        ).fetchall()
-        result = []
-        for row in rows:
-            result.append({
-                "title": row["title"] or "",
-                "summary": row["summary"] or "",
-                "category": row["category"] or "Other",
-                "threat_level": row["threat_level"],
-                "composite_score": row["composite_score"],
-                "channel_slug": row["channel_slug"],
-                "timestamp": row["timestamp"],
-                "entities": json.loads(row["key_entities"] or "[]"),
-            })
-        return result
 
 
 def _row_to_post(row: sqlite3.Row) -> PostRecord:

@@ -41,10 +41,10 @@ class TriageConfig(BaseModel):
 
 
 class GenerationConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     output_dir: str = "./briefings"
     generate_at: str = "23:59"          # time for daily auto-generation in daemon mode (HH:MM, interpreted in timezone below)
     timezone: str = "UTC"               # IANA timezone name for generate_at scheduling (e.g. "Europe/London")
-    synthesis_post_limit: int = 20      # number of top posts fed to the intelligence front page
 
 
 class StorageConfig(BaseModel):
