@@ -100,3 +100,77 @@ def test_prepend_pdf_no_tmp_file_left(tmp_path):
 
     tmp_files = list(tmp_path.glob("*.tmp.pdf"))
     assert tmp_files == [], f"Unexpected temp files: {tmp_files}"
+
+
+# ---------------------------------------------------------------------------
+# _triaged_to_dicts
+# ---------------------------------------------------------------------------
+
+def test_triaged_to_dicts_converts_correctly():
+    from datetime import datetime, timezone
+    from tg_compiler.db import PostRecord, AnalysisRecord
+    from tg_compiler.triage import TriagedPost
+    from tg_compiler.synthesiser import _triaged_to_dicts
+
+    post = PostRecord(
+        channel_id=1,
+        channel_name="chan_a",
+        message_id=10,
+        timestamp=datetime(2026, 6, 9, 10, 30, tzinfo=timezone.utc),
+        text="original text",
+        media_paths=[],
+        has_images=False,
+        raw_json="{}",
+    )
+    analysis = AnalysisRecord(
+        post_id=1,
+        title="Big Event",
+        summary="A notable development occurred.",
+        importance_score=4,
+        urgency_score=3,
+        credibility_score=5,
+        relevance_score=4,
+        category="Military",
+        key_entities=["Russia", "Ukraine"],
+        model_used="test",
+        threat_level="HIGH",
+    )
+    item = TriagedPost(post=post, analysis=analysis, composite_score=3.9)
+    result = _triaged_to_dicts([item])
+
+    assert len(result) == 1
+    d = result[0]
+    assert d["title"] == "Big Event"
+    assert d["summary"] == "A notable development occurred."
+    assert d["category"] == "Military"
+    assert d["threat_level"] == "HIGH"
+    assert d["composite_score"] == 3.9
+    assert d["channel_slug"] == "chan_a"
+    assert d["timestamp"] == "2026-06-09T10:30:00+00:00"
+    assert d["entities"] == ["Russia", "Ukraine"]
+
+
+def test_triaged_to_dicts_empty_list():
+    from tg_compiler.synthesiser import _triaged_to_dicts
+    assert _triaged_to_dicts([]) == []
+
+
+def test_triaged_to_dicts_missing_title_defaults_empty():
+    from datetime import datetime, timezone
+    from tg_compiler.db import PostRecord, AnalysisRecord
+    from tg_compiler.triage import TriagedPost
+    from tg_compiler.synthesiser import _triaged_to_dicts
+
+    post = PostRecord(
+        channel_id=2, channel_name="chan_b", message_id=99,
+        timestamp=datetime(2026, 6, 9, tzinfo=timezone.utc),
+        text="", media_paths=[], has_images=False, raw_json="{}",
+    )
+    analysis = AnalysisRecord(
+        post_id=2, title="", summary="Some summary.",
+        importance_score=2, urgency_score=2, credibility_score=2, relevance_score=2,
+        category="Other", key_entities=[], model_used="test",
+    )
+    item = TriagedPost(post=post, analysis=analysis, composite_score=2.0)
+    result = _triaged_to_dicts([item])
+    assert result[0]["title"] == ""

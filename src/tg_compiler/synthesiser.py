@@ -134,6 +134,22 @@ def _sanitize_intel(intel: dict) -> dict:
     }
 
 
+def _triaged_to_dicts(main_items: list) -> list[dict]:
+    return [
+        {
+            "title": item.analysis.title or "",
+            "summary": item.analysis.summary or "",
+            "category": item.analysis.category or "Other",
+            "threat_level": item.analysis.threat_level,
+            "composite_score": item.composite_score,
+            "channel_slug": item.post.channel_name,
+            "timestamp": item.post.timestamp.isoformat(),
+            "entities": item.analysis.key_entities,
+        }
+        for item in main_items
+    ]
+
+
 def _render_front_page_md(intel: dict, target_date: date) -> str:
     env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=False)
     tmpl = env.get_template("intel_front_page.md.j2")
