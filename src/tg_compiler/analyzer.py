@@ -278,6 +278,8 @@ class Analyzer:
         sem = asyncio.Semaphore(self._cfg.lmstudio.max_concurrent_analyses)
 
         from tqdm import tqdm
+        from tqdm.contrib.logging import logging_redirect_tqdm
+
         bar = tqdm(total=len(posts), desc="Analysing posts", unit="post")
 
         async def _analyse_and_save(post: PostRecord) -> None:
@@ -300,8 +302,9 @@ class Analyzer:
             ))
             bar.update(1)
 
-        try:
-            await asyncio.gather(*(_analyse_and_save(p) for p in posts))
-        finally:
-            bar.close()
+        with logging_redirect_tqdm():
+            try:
+                await asyncio.gather(*(_analyse_and_save(p) for p in posts))
+            finally:
+                bar.close()
         return len(posts)

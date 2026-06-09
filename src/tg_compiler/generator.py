@@ -14,10 +14,10 @@ TEMPLATES_DIR = Path(__file__).parent.parent.parent / "templates"
 
 
 _THREAT_BADGES = {
-    "CRITICAL": '<span class="badge badge-critical">CRITICAL</span>',
-    "HIGH":     '<span class="badge badge-high">HIGH</span>',
-    "MODERATE": '<span class="badge badge-moderate">MODERATE</span>',
-    "LOW":      '<span class="badge badge-low">LOW</span>',
+    "CRITICAL": '<b><span style="color:#c0392b;">&#9632; CRITICAL</span></b>',
+    "HIGH":     '<b><span style="color:#d35400;">&#9632; HIGH</span></b>',
+    "MODERATE": '<b><span style="color:#b7950b;">&#9632; MODERATE</span></b>',
+    "LOW":      '<b><span style="color:#1e8449;">&#9632; LOW</span></b>',
 }
 
 

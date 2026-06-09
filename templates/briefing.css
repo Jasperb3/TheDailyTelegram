@@ -72,22 +72,6 @@ img { max-width: 300px; max-height: 200px; margin: 0.5em 0; display: block; }
 /* ── Dividers ─────────────────────────────────────────────────── */
 hr { border: none; border-top: 1px solid #ddd; margin: 1.2em 0; }
 
-/* ── Threat level badges ───────────────────────────────────────── */
-.badge {
-  display: inline;
-  font-size: 0.72em;
-  font-weight: bold;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 0.1em 0.45em;
-  border-radius: 3px;
-  color: #fff;
-}
-.badge-critical { background-color: #c0392b; }
-.badge-high     { background-color: #d35400; }
-.badge-moderate { background-color: #b7950b; }
-.badge-low      { background-color: #1e8449; }
-
 /* ── Appendix two-column layout ───────────────────────────────── */
 .appendix-cols {
   column-count: 2;
