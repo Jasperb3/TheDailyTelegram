@@ -58,7 +58,7 @@ Telegram (Telethon) → scraper.py → db.py ← analyzer.py (LM Studio) → tri
 
 **`config.py`** — Single `AppConfig` Pydantic model loaded from `config.yaml`. Use `load_config(path, env_override=True)` everywhere; it reads `TG_API_ID` / `TG_API_HASH` / `LM_API_TOKEN` from env (`.env` is auto-loaded by `main.py` via `python-dotenv`). `AppConfig` has `extra="forbid"` so YAML typos fail loudly. All fields in the config model are actively used — see `config.yaml.example` for the full reference with comments.
 
-**`db.py`** — Owns the SQLite schema and all SQL. The two domain dataclasses (`PostRecord`, `AnalysisRecord`) live here. `AnalysisRecord` includes `title` (LLM-generated 5-10 word headline) and `threat_level` (one of `CRITICAL`, `HIGH`, `MODERATE`, `LOW`). `insert_post` returns `None` on duplicate (UNIQUE on `channel_id + message_id`) — callers use this to skip already-seen posts. `get_unanalysed_posts` drives the analyzer's work queue. `reset_all_cursors()` sets every channel cursor to 0 (used by `--since`). `get_top_posts_for_date(date_str, limit)` returns the top posts by composite score; used by the standalone `--analyse` path when no `main_items` are passed. Safe migrations run at `init_schema()` time using `PRAGMA table_info` before any `ALTER TABLE` — safe on both fresh and existing databases.
+**`db.py`** — Owns the SQLite schema and all SQL. The two domain dataclasses (`PostRecord`, `AnalysisRecord`) live here. `AnalysisRecord` includes `title` (LLM-generated 5-10 word headline) and `threat_level` (one of `CRITICAL`, `HIGH`, `MODERATE`, `LOW`). `insert_post` returns `None` on duplicate (UNIQUE on `channel_id + message_id`) — callers use this to skip already-seen posts. `get_unanalysed_posts` drives the analyzer's work queue. `reset_all_cursors()` sets every channel cursor to 0 (used by `--since`). Safe migrations run at `init_schema()` time using `PRAGMA table_info` before any `ALTER TABLE` — safe on both fresh and existing databases.
 
 **`scraper.py`** — Telethon async context manager. `Scraper.scrape_channel()` fetches messages since the last cursor (`offset_id=last_seen_id`); when the cursor is 0 (first run or after reset), uses `offset_date = now - lookback_seconds` instead. Skips `MessageService` objects (system events), downloads photos (with one retry), inserts to DB, and advances the per-channel cursor. Tests only cover the pure `media_path_for()` helper.
 
@@ -88,7 +88,7 @@ Telegram (Telethon) → scraper.py → db.py ← analyzer.py (LM Studio) → tri
 - `scraper.py` has no integration tests for the Telethon layer (requires live credentials). Only `media_path_for()` is unit-tested.
 - `analyzer.py` tests construct `PostAnalysis` and message payloads locally (no LM Studio server needed). `Analyzer` and `Scraper` are not mocked — integration tests require live services.
 - `asyncio_mode = "auto"` in `pyproject.toml` — async test functions work without decorators.
-- 79 tests across 8 files; all pass with `pytest`.
+- 84 tests across 8 files; all pass with `pytest`.
 
 ## Runtime requirements
 
