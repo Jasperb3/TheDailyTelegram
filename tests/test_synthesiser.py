@@ -174,3 +174,22 @@ def test_triaged_to_dicts_missing_title_defaults_empty():
     item = TriagedPost(post=post, analysis=analysis, composite_score=2.0)
     result = _triaged_to_dicts([item])
     assert result[0]["title"] == ""
+
+
+# ---------------------------------------------------------------------------
+# run_analysis signature
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_run_analysis_accepts_main_items_kwarg():
+    """run_analysis must accept main_items=[] without error (empty → early exit)."""
+    from datetime import date
+    from tg_compiler.synthesiser import run_analysis
+    from tg_compiler.config import AppConfig
+
+    cfg = AppConfig.model_validate({
+        "telegram": {"api_id": 1, "api_hash": "x", "channels": []},
+        "lmstudio": {"model": "test"},
+    })
+    # Empty main_items — should log error and return without crashing
+    await run_analysis(cfg, date(2026, 6, 9), main_items=[])

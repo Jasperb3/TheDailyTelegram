@@ -200,23 +200,38 @@ def _prepend_pdf(front_page_path: Path, briefing_path: Path) -> None:
         raise
 
 
-async def run_analysis(config: AppConfig, target_date: date) -> None:
+async def run_analysis(config: AppConfig, target_date: date, main_items=None) -> None:
     date_str = target_date.isoformat()
     date_dir = Path(config.generation.output_dir) / date_str
 
-    # Find the most recent TheDailyTelegram PDF in the date subdirectory
     pdfs = sorted(date_dir.glob("TheDailyTelegram_*.pdf")) if date_dir.exists() else []
     if not pdfs:
         log.error("No briefing found for %s. Run --batch first.", date_str)
         return
-    briefing_path = pdfs[-1]  # latest by timestamped filename
+    briefing_path = pdfs[-1]
 
-    db = Database(config.storage.db_path)
-    db.init_schema()
+    if main_items is None:
+        from tg_compiler.triage import triage as do_triage
+        db = Database(config.storage.db_path)
+        db.init_schema()
+        pairs = db.get_days_posts_with_analyses(date_str)
+        if not pairs:
+            log.error(
+                "No analysed posts found for %s — cannot generate intelligence front page",
+                date_str,
+            )
+            return
+        channel_priorities = {ch.slug: ch.priority for ch in config.telegram.channels}
+        content = do_triage(pairs, config.triage, today=target_date, channel_priorities=channel_priorities)
+        posts = _triaged_to_dicts(content.main_items)
+    else:
+        posts = _triaged_to_dicts(main_items)
 
-    posts = db.get_top_posts_for_date(date_str, limit=config.triage.max_main_items)
     if not posts:
-        log.error("No analysed posts found for %s — cannot generate intelligence front page", date_str)
+        log.error(
+            "No posts to synthesise for %s — cannot generate intelligence front page",
+            date_str,
+        )
         return
 
     log.info("Synthesising intelligence assessment from %d posts…", len(posts))
