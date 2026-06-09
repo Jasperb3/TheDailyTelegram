@@ -8,12 +8,14 @@
 
 ## Executive Summary
 
-{% for item in content.main_items[:10] %}
-{% set username = content.channel_links.get(item.post.channel_name, '') %}
-- {{ threat_badge(item.analysis.threat_level) }} · `{{ item.analysis.category }}` — {{ item.analysis.title if item.analysis.title else item.analysis.summary[:90] ~ ('…' if item.analysis.summary|length > 90 else '') }} _({{ item.post.channel_name }}, {{ item.post.timestamp.strftime('%H:%M UTC') }}{% if username %}, [↗ t.me](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %})_
-{% else %}
-_No high-priority items today._
+<div class="exec-summary">
+{% for item in content.main_items[:10] -%}
+{% set username = content.channel_links.get(item.post.channel_name, '') -%}
+<div class="exec-item">{{ threat_badge(item.analysis.threat_level) }} &nbsp;<span class="cat-slug">{{ item.analysis.category }}</span> — {{ item.analysis.title if item.analysis.title else item.analysis.summary[:90] ~ ('…' if item.analysis.summary|length > 90 else '') }} <span class="exec-meta">({{ item.post.channel_name }}, {{ item.post.timestamp.strftime('%H:%M UTC') }}{% if username %} · <a href="https://t.me/{{ username }}/{{ item.post.message_id }}">↗</a>{% endif %})</span></div>
+{% else -%}
+<p><em>No high-priority items today.</em></p>
 {% endfor %}
+</div>
 
 {% for channel in content.channel_names %}
 ## Channel: {{ channel }}
