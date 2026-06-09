@@ -93,18 +93,42 @@ async def synthesise(config: AppConfig, posts: list[dict]) -> dict | None:
         log.error("LM Studio not reachable — cannot generate intelligence front page: %s", e)
         return None
 
-    raw = response.choices[0].message.content or ""
-    log.debug("Synthesis raw response: %s", raw)
+    choice = response.choices[0]
+    raw = choice.message.content or ""
+    log.debug("Synthesis raw response (finish_reason=%s): %s", choice.finish_reason, raw)
+
+    if not raw.strip():
+        log.error(
+            "Intelligence synthesis failed: LM Studio returned empty content "
+            "(finish_reason=%r, prompt_tokens=%s, completion_tokens=%s)",
+            choice.finish_reason,
+            getattr(response.usage, "prompt_tokens", "?"),
+            getattr(response.usage, "completion_tokens", "?"),
+        )
+        return None
 
     # Strip markdown fences if the model wrapped the JSON despite instructions
     stripped = raw.strip()
     if stripped.startswith("```"):
         stripped = stripped.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
 
+    if not stripped:
+        log.error(
+            "Intelligence synthesis failed: content was only markdown fences "
+            "(finish_reason=%r, raw=%r)",
+            choice.finish_reason,
+            raw[:200],
+        )
+        return None
+
     try:
         data = json.loads(stripped)
     except json.JSONDecodeError as e:
-        log.error("Intelligence synthesis failed: JSON parse error: %s", e)
+        log.error(
+            "Intelligence synthesis failed: JSON parse error: %s — raw content: %r",
+            e,
+            raw[:500],
+        )
         return None
 
     error = _validate_intel(data)
