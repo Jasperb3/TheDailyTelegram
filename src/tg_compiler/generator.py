@@ -26,7 +26,8 @@ def _threat_badge(threat_level: str) -> str:
 
 
 def render_markdown(content: BriefingContent) -> str:
-    for item in content.main_items:
+    # Lead (executive) items are the only ones rendered with embedded images.
+    for item in content.executive_items:
         item.post.media_paths = [str(Path(p).resolve()) for p in item.post.media_paths]
 
     env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=False)

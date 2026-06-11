@@ -240,12 +240,13 @@ def triage(
     category_counts = dict(Counter(t.analysis.category for t in all_kept))
     channel_names = sorted({p.channel_name for p, _ in pairs})
 
-    # Executive Summary: every CRITICAL item is guaranteed a slot, regardless of score
-    # (including those relegated to the appendix), then filled with the highest-scoring
-    # remaining main items up to 10.
+    # Lead reports: every CRITICAL item is guaranteed a slot, regardless of score
+    # (including those relegated to the appendix), topped up with the highest-scoring
+    # remaining main items to 10 total — never truncating criticals, so the lead
+    # section grows beyond 10 when criticals alone exceed it.
     critical_items = [t for t in all_kept if t.analysis.threat_level == "CRITICAL"]
     other_items = [t for t in main_items if t.analysis.threat_level != "CRITICAL"]
-    executive_items = (critical_items + other_items)[:10]
+    executive_items = critical_items + other_items[: max(0, 10 - len(critical_items))]
 
     return BriefingContent(
         date=today,

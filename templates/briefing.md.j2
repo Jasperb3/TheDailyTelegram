@@ -1,17 +1,12 @@
-## Executive Summary
+{# The three rendered tiers are disjoint: lead items are removed from the lower
+   sections so no story is printed twice. content.main_items / appendix_items keep
+   their full membership for the intel synthesiser and statistics. #}
+{% set lead = content.executive_items %}
+{% set other = content.main_items | reject('in', lead) | list %}
+{% set brief = content.appendix_items | reject('in', lead) | list %}
+## Lead Reports
 
-<div class="exec-summary">
-{% for item in content.executive_items -%}
-{% set username = content.channel_links.get(item.post.channel_name, '') -%}
-<div class="exec-item">{{ threat_badge(item.analysis.threat_level) }} &nbsp;<span class="cat-slug">{{ item.analysis.category }}</span> — {{ item.analysis.title if item.analysis.title else item.analysis.summary[:90] ~ ('…' if item.analysis.summary|length > 90 else '') }} <span class="exec-meta">({{ item.post.channel_name }}, {{ item.post.timestamp.strftime('%H:%M UTC') }}{% if username %} · <a href="https://t.me/{{ username }}/{{ item.post.message_id }}">↗</a>{% endif %})</span></div>
-{% else -%}
-<p><em>No high-priority items today.</em></p>
-{% endfor %}
-</div>
-
-## Priority Reports
-
-{% for item in content.main_items if item.analysis.summary %}
+{% for item in lead if item.analysis.summary %}
 {% set username = content.channel_links.get(item.post.channel_name, '') %}
 ### {{ threat_badge(item.analysis.threat_level) }} · `{{ item.analysis.category }}` · **{{ item.analysis.title if item.analysis.title else item.analysis.summary[:90] ~ ('…' if item.analysis.summary|length > 90 else '') }}**
 
@@ -45,14 +40,25 @@
 
 ---
 {% else %}
-_No reports today._
+_No lead reports today._
 {% endfor %}
 
-{% if content.appendix_items %}
-## Appendix — Lower Priority Items
+{% if other %}
+## Other Developments
+
+<div class="exec-summary">
+{% for item in other -%}
+{% set username = content.channel_links.get(item.post.channel_name, '') -%}
+<div class="exec-item">{{ threat_badge(item.analysis.threat_level) }} &nbsp;<span class="cat-slug">{{ item.analysis.category }}</span> — {{ item.analysis.title if item.analysis.title else item.analysis.summary[:90] ~ ('…' if item.analysis.summary|length > 90 else '') }} <span class="exec-meta">({{ item.post.channel_name }}, {{ item.post.timestamp.strftime('%H:%M UTC') }} · {{ "%.1f"|format([item.composite_score, 5.0]|min) }}/5{% if username %} · <a href="https://t.me/{{ username }}/{{ item.post.message_id }}">↗</a>{% endif %})</span></div>
+{% endfor -%}
+</div>
+{% endif %}
+
+{% if brief %}
+## In Brief
 
 <div class="appendix-cols">
-{% for item in content.appendix_items %}
+{% for item in brief %}
 {% set username = content.channel_links.get(item.post.channel_name, '') %}
 <div class="appendix-item">
 <span class="a-channel">{{ item.post.channel_name }}</span> <span class="a-time">{{ item.post.timestamp.strftime('%H:%M UTC') }}</span> · <span class="cat-slug">{{ item.analysis.category }}</span><br>
@@ -65,7 +71,7 @@ _No reports today._
 ## Statistics
 
 <div class="stats-block">
-<b>Items:</b> {{ content.main_items|length + content.appendix_items|length }} published · {{ content.main_items|length }} priority · {{ content.appendix_items|length }} appendix{% if content.posts_clustered %} · {{ content.posts_clustered }} duplicates merged{% endif %}<br>
+<b>Items:</b> {{ lead|length + other|length + brief|length }} published · {{ lead|length }} lead · {{ other|length }} other · {{ brief|length }} in brief{% if content.posts_clustered %} · {{ content.posts_clustered }} duplicates merged{% endif %}<br>
 {% if content.posts_scraped or content.posts_analysed or content.posts_skipped -%}
 <b>Pipeline:</b> {{ content.posts_scraped }} scraped · {{ content.posts_analysed }} analysed · {{ content.posts_skipped }} skipped (low-content)<br>
 {% endif -%}
@@ -77,9 +83,9 @@ _No reports today._
 <b>READER'S KEY — HOW THIS DOCUMENT IS PRODUCED</b><br>
 This briefing is generated automatically by a fixed pipeline. This key is static boilerplate: it is never written or altered by the AI model and is identical in every edition.<br>
 <b>Pipeline.</b> Posts are collected from a configured list of Telegram channels, then each post is analysed individually by a language model, which assigns it a headline, summary, category, threat level, named entities, and four 1–5 scores (importance, urgency, credibility, relevance). Posts are then scored, de-duplicated, ranked, and laid out into this document by deterministic code. The Intelligence Assessment front page is a separate model pass that synthesises the day's top reports into themes, signals, and actors, with trend data drawn from the preceding seven days.<br>
-<b>Document order.</b> (1) <i>Intelligence Assessment</i> — situation summary, key themes, signals &amp; warnings, named actors, and emerging actors/topics (entities seen today but absent from the prior seven days). (2) <i>Executive Summary</i> — every CRITICAL-rated item regardless of score, then the highest-scored remaining reports, capped at ten. (3) <i>Priority Reports</i> — the day's main reports in descending priority order; the most important report always appears first, regardless of source channel. (4) <i>Appendix</i> — lower-priority items, also in score order. (5) <i>Statistics</i> — the day's pipeline counts.<br>
-<b>Scoring.</b> Each report's composite score = 0.4×importance + 0.3×urgency + 0.2×credibility + 0.1×relevance (each 1–5, model-assigned), multiplied by per-channel priority and credibility weights set in configuration. Configured keywords add a fixed boost; items categorised as Rumor are down-weighted; older posts decay exponentially with age toward a floor, so they are demoted but never hidden. Reports confirmed by other channels receive a corroboration boost. Displayed scores are capped at 5.0. Reports clear a configured score threshold to enter Priority Reports; if too few qualify, the highest-scoring remainder are promoted so the main section is never empty.<br>
+<b>Document order.</b> (1) <i>Intelligence Assessment</i> — situation summary, key themes, signals &amp; warnings, named actors, and emerging actors/topics (entities seen today but absent from the prior seven days). (2) <i>Lead Reports</i> — the day's most important stories in full detail (summary, entities, corroboration, images): every CRITICAL-rated item regardless of score, topped up with the highest-scored remaining reports to at least ten. (3) <i>Other Developments</i> — the remaining reports that cleared the priority threshold, one line each, in descending score order. (4) <i>In Brief</i> — lower-priority items, also in score order. (5) <i>Statistics</i> — the day's pipeline counts. Each story appears in exactly one section.<br>
+<b>Scoring.</b> Each report's composite score = 0.4×importance + 0.3×urgency + 0.2×credibility + 0.1×relevance (each 1–5, model-assigned), multiplied by per-channel priority and credibility weights set in configuration. Configured keywords add a fixed boost; items categorised as Rumor are down-weighted; older posts decay exponentially with age toward a floor, so they are demoted but never hidden. Reports confirmed by other channels receive a corroboration boost. Displayed scores are capped at 5.0. Reports clear a configured score threshold to escape In Brief; if too few qualify, the highest-scoring remainder are promoted so the briefing never runs thin.<br>
 <b>De-duplication.</b> Near-identical reports across channels are merged: the highest-scored version is shown and the others appear on it as "Corroborated by" links rather than as separate entries.<br>
-<b>Threat levels.</b> <b><span style="color:#c0392b;">&#9632; CRITICAL</span></b> / <b><span style="color:#d35400;">&#9632; HIGH</span></b> / <b><span style="color:#b7950b;">&#9632; MODERATE</span></b> / <b><span style="color:#1e8449;">&#9632; LOW</span></b> are the model's assessment of immediate significance, independent of the composite score — a low-scoring CRITICAL item still surfaces in the Executive Summary.<br>
-<b>How to read.</b> Skim the front page for the day's shape, the Executive Summary for what matters most, then read Priority Reports top-down. Every ↗ link opens the original Telegram post for verification. All times are UTC. All summaries, titles, scores, and threat levels are machine-generated from single-source social media posts and should be treated as leads, not confirmed reporting.
+<b>Threat levels.</b> <b><span style="color:#c0392b;">&#9632; CRITICAL</span></b> / <b><span style="color:#d35400;">&#9632; HIGH</span></b> / <b><span style="color:#b7950b;">&#9632; MODERATE</span></b> / <b><span style="color:#1e8449;">&#9632; LOW</span></b> are the model's assessment of immediate significance, independent of the composite score — a low-scoring CRITICAL item is still promoted to Lead Reports.<br>
+<b>How to read.</b> Skim the front page for the day's shape, read Lead Reports in full, then scan Other Developments and In Brief top-down — every section is sorted most-important-first. Every ↗ link opens the original Telegram post for verification. All times are UTC. All summaries, titles, scores, and threat levels are machine-generated from single-source social media posts and should be treated as leads, not confirmed reporting.
 </div>

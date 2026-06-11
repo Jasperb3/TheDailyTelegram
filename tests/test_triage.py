@@ -532,3 +532,29 @@ def test_corroboration_boost_counts_distinct_other_channels():
     assert len(kept.corroborations) == 3
     expected = 5.0 * (1 + 0.15 * 1)  # chan_b counts once; own-channel dup not at all
     assert abs(kept.composite_score - expected) < 0.01
+
+
+def test_executive_items_uncapped_when_criticals_exceed_ten():
+    summaries = [
+        "Airstrikes hit Beirut overnight causing significant damage",
+        "Ceasefire negotiations collapsed after delegates walked out",
+        "President signed emergency decree expanding military powers",
+        "Floods displaced thousands across southern provinces",
+        "Opposition leader arrested on espionage charges",
+        "Oil pipeline sabotaged near border crossing",
+        "Evacuation ordered for coastal settlements ahead of storm",
+        "Diplomatic envoy expelled following spy scandal",
+        "Rebel forces captured strategic bridge over river",
+        "Parliament dissolved after vote of no confidence passed",
+        "Border crossing shelled during humanitarian convoy transit",
+        "Naval blockade announced around disputed island chain",
+    ]
+    pairs = []
+    for i in range(12):
+        post, analysis = make_pair(msg_id=i, importance=5, summary=summaries[i])
+        analysis.threat_level = "CRITICAL"
+        pairs.append((post, analysis))
+
+    config = TriageConfig(min_composite_score=0.0)
+    result = triage(pairs, config)
+    assert len(result.executive_items) == 12  # all criticals kept, no cap at 10

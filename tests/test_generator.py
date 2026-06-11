@@ -34,9 +34,9 @@ def test_markdown_contains_date():
     assert "14:30 UTC" in md
 
 
-def test_markdown_has_executive_summary():
+def test_markdown_has_lead_reports_section():
     md = render_markdown(make_content(n_main=3))
-    assert "Executive Summary" in md
+    assert "Lead Reports" in md
 
 
 def test_markdown_has_channel_section():
@@ -55,9 +55,10 @@ def test_markdown_includes_post_summary():
     assert "Key event occurred." in md
 
 
-def test_appendix_is_present_when_low_score_posts_exist():
+def test_in_brief_present_when_low_score_posts_exist():
     md = render_markdown(make_content(n_appendix=1))
-    assert "Appendix" in md
+    assert "In Brief" in md
+    assert "Appendix" not in md
 
 
 def test_empty_main_items_still_renders():
@@ -65,8 +66,8 @@ def test_empty_main_items_still_renders():
         date=date(2026, 6, 7), main_items=[], appendix_items=[], channel_names=[]
     )
     md = render_markdown(content)
-    assert "Executive Summary" in md
-    assert "No high-priority items today" in md
+    assert "Lead Reports" in md
+    assert "No lead reports today" in md
 
 
 from tg_compiler.generator import generate_briefing
@@ -113,6 +114,7 @@ def test_corroboration_line_rendered_when_present():
     content.main_items[0].corroborations = [
         CorroborationRef(channel_slug="other_chan", message_id=42, timestamp=datetime(2026, 6, 7, 14, 0, tzinfo=timezone.utc))
     ]
+    content.executive_items = content.main_items[:1]  # corroborations render in Lead Reports
     content.channel_links = {"other_chan": "other_chan"}
     md = render_markdown(content)
     assert "Corroborated by 1 other channel" in md
@@ -142,11 +144,14 @@ def test_pipeline_stats_absent_when_not_set():
 
 
 def test_score_display_clamped_at_five():
-    content = make_content(n_main=1, n_appendix=0)
+    content = make_content(n_main=2, n_appendix=0)
     content.main_items[0].composite_score = 7.5  # corroboration boost can exceed 5
+    content.main_items[1].composite_score = 6.5
+    content.executive_items = content.main_items[:1]  # one lead, one compact line
     md = render_markdown(content)
-    assert "Score 5.0/5" in md
-    assert "7.5/5" not in md
+    assert "Score 5.0/5" in md   # lead byline
+    assert "· 5.0/5" in md       # compact line
+    assert "7.5/5" not in md and "6.5/5" not in md
 
 
 def test_main_items_rendered_in_score_order_not_by_channel():
@@ -160,8 +165,8 @@ def test_main_items_rendered_in_score_order_not_by_channel():
     content.main_items = [a, b, c]
     content.channel_names = ["alpha", "zeta"]
     md = render_markdown(content)
-    assert "Priority Reports" in md
-    body = md[md.index("Priority Reports"):]
+    assert "Other Developments" in md
+    body = md[md.index("Other Developments"):]
     assert (
         body.index("Highest priority story.")
         < body.index("Middle priority story.")
@@ -191,6 +196,7 @@ def test_pdf_embeds_images_from_absolute_paths(tmp_path):
 
     content = make_content(n_main=1, n_appendix=0)
     content.main_items[0].post.media_paths = [str(img_path)]
+    content.executive_items = content.main_items[:1]  # images render in Lead Reports
     pdf_path = generate_briefing(content, output_dir=str(tmp_path), pdf=True)
 
     doc = fitz.open(str(pdf_path))
@@ -204,6 +210,7 @@ def test_same_channel_corroborations_render_as_related_posts():
         CorroborationRef(channel_slug="news", message_id=43,
                          timestamp=datetime(2026, 6, 7, 15, 0, tzinfo=timezone.utc))
     ]
+    content.executive_items = content.main_items[:1]
     content.channel_links = {"news": "news"}
     md = render_markdown(content)
     assert "**Corroborated by" not in md
@@ -219,6 +226,34 @@ def test_corroboration_count_uses_distinct_other_channels():
         CorroborationRef(channel_slug="chan_b", message_id=2, timestamp=ts),
         CorroborationRef(channel_slug="news", message_id=3, timestamp=ts),
     ]
+    content.executive_items = content.main_items[:1]
     md = render_markdown(content)
     assert "Corroborated by 1 other channel:" in md
     assert "Related posts from this channel" in md
+
+
+def test_lead_items_not_repeated_in_lower_sections():
+    content = make_content(n_main=2, n_appendix=1)
+    content.main_items[0].analysis.title = "Lead headline"
+    content.main_items[0].analysis.summary = "Unique lead story summary."
+    content.main_items[1].analysis.summary = "Unique other development summary."
+    content.appendix_items[0].analysis.summary = "Unique in-brief summary."
+    content.executive_items = content.main_items[:1]
+    md = render_markdown(content)
+    assert md.count("Unique lead story summary.") == 1
+    assert md.count("Unique other development summary.") == 1
+    assert md.count("Unique in-brief summary.") == 1
+    # the lead story renders in full (with Entities line), the others compactly
+    lead_block = md[md.index("Lead Reports"):md.index("Other Developments")]
+    assert "Unique lead story summary." in lead_block
+    assert "**Entities:**" in lead_block
+
+
+def test_critical_lead_item_from_appendix_not_repeated_in_brief():
+    content = make_content(n_main=1, n_appendix=1)
+    content.appendix_items[0].analysis.title = "Critical alert headline"
+    content.appendix_items[0].analysis.summary = "Low-scored critical alert summary."
+    content.executive_items = [content.appendix_items[0]]
+    md = render_markdown(content)
+    assert md.count("Low-scored critical alert summary.") == 1
+    assert "## In Brief" not in md  # its only appendix item was promoted to lead

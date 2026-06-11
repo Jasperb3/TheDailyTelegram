@@ -363,22 +363,24 @@ Each `--batch` or `--generate` run writes a new uniquely timestamped PDF. The `.
 - *Named Actors* — 4-6 most significant actors and their activity today
 - *Emerging Actors / Topics* — entities mentioned today but absent from the prior 7 days (shown once a baseline exists)
 
-**Executive Summary** — up to 10 posts across all channels, one line each with threat level badge, category, headline, and channel attribution. Every CRITICAL-rated item is guaranteed a slot (even one that scored into the Appendix); remaining slots go to the highest-scoring posts.
-
-**Priority Reports** — all main-briefing posts in a single section, sorted by composite score descending so the most important story always appears first regardless of source channel (the channel is shown in each item's byline). Posts qualify by clearing `min_composite_score`; if fewer than `min_main_items` qualify, the highest-scoring remainder are promoted so the section never runs thin, and the total is capped at `max_main_items` (excess goes to the Appendix). Cross-channel reports of the same story (detected by word overlap, or shared named entities with alias normalisation so "U.S."/"US"/"United States" match) are clustered: the highest-scoring report appears, with a **"Corroborated by N other channels"** line linking to the duplicates (N counts distinct other channels; repeat posts from the story's own channel are listed separately as "Related posts from this channel" and don't inflate the count), and cross-channel corroboration boosts the story's score. Each entry shows:
+**Lead Reports** — the day's most important stories in full detail. Every CRITICAL-rated item is guaranteed a slot regardless of its score (even one that scored into In Brief), topped up with the highest-scoring remaining reports to at least 10 — never truncating criticals, so the section grows when criticals alone exceed 10. Cross-channel reports of the same story (detected by word overlap, or shared named entities with alias normalisation so "U.S."/"US"/"United States" match) are clustered: the highest-scoring report appears, with a **"Corroborated by N other channels"** line linking to the duplicates (N counts distinct other channels; repeat posts from the story's own channel are listed separately as "Related posts from this channel" and don't inflate the count), and cross-channel corroboration boosts the story's score. Each entry shows:
 - **Threat level badge**: ■ CRITICAL (red) · ■ HIGH (orange) · ■ MODERATE (amber) · ■ LOW (green)
 - **Category** in backtick style: `` `Breaking News` `` / `` `Analysis` `` / `` `Official Statement` `` / `` `Rumor` `` / `` `Media` `` / `` `Other` ``
 - LLM-generated headline title (5-10 words)
-- Post timestamp and direct link to the original Telegram post (↗ t.me)
+- Channel, post timestamp, and direct link to the original Telegram post (↗ t.me)
 - Full summary from the VLM
 - Composite score out of 5
 - Key named entities
 - Image analysis excerpt (if the post had a substantive image)
 - Attached images (up to 3, embedded in PDF)
 
-**Appendix** — posts that scored below `min_composite_score`, listed compactly with direct Telegram links.
+**Other Developments** — the remaining reports that cleared `min_composite_score`, one compact line each (badge, category, headline, channel, time, score, link), sorted by composite score descending. Posts qualify by clearing the threshold; if fewer than `min_main_items` qualify, the highest-scoring remainder are promoted, and the total is capped at `max_main_items` (excess goes to In Brief).
 
-**Statistics** — a compact block with the published item count, priority/appendix split, channels covered, a per-category breakdown, and (after a `--batch` run) the pipeline funnel: scraped → analysed → skipped (low-content) → duplicates merged.
+**In Brief** — lower-priority posts, listed compactly with direct Telegram links.
+
+Each story appears in exactly one section — lead stories are not repeated below.
+
+**Statistics** — a compact block with the published item count, lead/other/in-brief split, channels covered, a per-category breakdown, and (after a `--batch` run) the pipeline funnel: scraped → analysed → skipped (low-content) → duplicates merged.
 
 **Reader's Key** — static smallprint at the end of every edition explaining how the document is produced, its section order, the scoring formula, de-duplication, and threat levels. It is template boilerplate, never written or altered by the LLM, and identical in every run.
 
