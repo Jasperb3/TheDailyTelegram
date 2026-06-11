@@ -14,3 +14,4 @@ docs/
 issues/
 CLAUDE.md
 .antigravitycli/
+compare_models.py
