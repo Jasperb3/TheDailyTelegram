@@ -21,24 +21,26 @@ log = logging.getLogger(__name__)
 TEMPLATES_DIR = Path(__file__).parent.parent.parent / "templates"
 
 _SYNTHESIS_SYSTEM = (
-    "You are a senior intelligence analyst producing a daily assessment. "
-    "You will receive a structured list of the highest-priority intelligence reports "
-    "from a 24-hour monitoring period. Produce a concise, structured assessment. "
-    "Return ONLY valid JSON. No preamble, no markdown fences, no commentary outside the JSON object."
+    "You are a senior intelligence analyst producing a daily assessment from the "
+    "highest-priority intelligence reports of a 24-hour monitoring period. "
+    "Ground every statement strictly in the supplied reports — never invent events, numbers, "
+    "quotes, or actors — and mark single-source or Rumor-category claims as unconfirmed "
+    "('reportedly'). Respond immediately with ONLY a valid JSON object: no reasoning preamble, "
+    "no markdown fences, no commentary outside the JSON."
 )
 
 _SYNTHESIS_INSTRUCTIONS = """
-Each report above has an "index" field. When you cite supporting evidence below, reference these indices.
+Each report above has an "index" field. When you cite supporting evidence below, reference these indices; cite only indices that genuinely support the point.
 
 Based on these intelligence reports, produce a JSON object with exactly these four keys:
 
-"situation_summary": A 3-5 sentence executive overview of the overall geopolitical situation. Write as an intelligence analyst, not a journalist. Be direct and specific — name actors, locations, and developments. If a 7-DAY MENTION TRENDS table is provided, incorporate notable trend shifts into the assessment.
+"situation_summary": A 3-5 sentence executive overview of the overall geopolitical situation, opening with the single most consequential development of the day. Direct and specific — name actors, locations, and developments. If a 7-DAY MENTION TRENDS table is provided, incorporate notable trend shifts.
 
-"key_themes": An array of 3-5 objects. Each object: {"theme": "<short title>", "detail": "<2-3 sentences explaining what events are connected and why the pattern matters>", "sources": [<indices of reports supporting this theme>], "continuity": "new"|"confirmed"|"escalating"|"retired" — if PREVIOUS ASSESSMENT THEMES are provided, set this relative to whether this theme matches one of them (confirmed/escalating if it continues, retired if a previous theme no longer applies); otherwise use "new"}
+"key_themes": An array of 3-5 objects. A theme is a pattern connecting two or more reports, not a restatement of one headline. Each object: {"theme": "<short title>", "detail": "<2-3 sentences on what events are connected and why the pattern matters>", "sources": [<indices of ALL reports supporting this theme>], "continuity": "new"|"confirmed"|"escalating"|"retired" — if PREVIOUS ASSESSMENT THEMES are provided, set this relative to whether this theme matches one of them (confirmed if it continues, escalating if it intensified, retired if a previous theme no longer applies); otherwise use "new"}
 
-"signals_and_warnings": An array of 3-5 objects. Each object: {"signal": "<short title>", "assessment": "<what could develop next and what observable indicators to watch for>", "sources": [<indices of reports supporting this signal>]}
+"signals_and_warnings": An array of 3-5 objects. Each object: {"signal": "<short title>", "assessment": "<what could plausibly develop next, with concrete observable indicators that would confirm or refute it>", "sources": [<indices of reports supporting this signal>]}
 
-"named_actors": An array of the 4-6 most significant actors from today's reporting. Each object: {"actor": "<name>", "role": "<one short phrase>", "activity": "<1-2 sentences on what they did today and its significance>"}
+"named_actors": An array of the 4-6 most significant actors (people, states, organisations) from today's reporting, in canonical form — never news agencies or platforms credited as sources. Each object: {"actor": "<name>", "role": "<one short phrase>", "activity": "<1-2 sentences on what they did today and its significance>"}
 """
 
 
@@ -132,7 +134,7 @@ async def synthesise(config: AppConfig, posts: list[dict], trends: dict | None =
                     {"role": "user", "content": user_message},
                 ],
                 temperature=0.2,
-                max_tokens=3000,
+                max_tokens=8000,
             )
         )
     except Exception as e:
