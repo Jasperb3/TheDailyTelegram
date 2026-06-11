@@ -64,7 +64,9 @@ def _render_pdf(md_text: str, out: Path, date_str: str) -> Path:
     ts = datetime.now().strftime("%H%M%S")
     pdf_obj = MarkdownPdf(toc_level=0)
     pdf_obj.meta["title"] = f"The Daily Telegram {date_str}"
-    pdf_obj.add_section(Section(md_text), user_css=user_css)
+    # root="/" — image srcs are absolute paths; fitz.Story resolves them against
+    # the section root, and the default "." silently drops them ([image] placeholder).
+    pdf_obj.add_section(Section(md_text, root="/"), user_css=user_css)
     pdf_path = out / f"TheDailyTelegram_{date_str}_{ts}.pdf"
     pdf_obj.save(str(pdf_path))
     log.info("PDF briefing saved to %s", pdf_path)
