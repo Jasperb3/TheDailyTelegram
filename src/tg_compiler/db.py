@@ -77,6 +77,11 @@ class Database:
                 last_seen_id BIGINT NOT NULL DEFAULT 0,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE TABLE IF NOT EXISTS intel_assessments (
+                date TEXT PRIMARY KEY,
+                intel_json TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
         """)
         self._conn.commit()
         existing = {
@@ -174,27 +179,59 @@ class Database:
                WHERE DATE(p.timestamp) = ?""",
             (date_str,),
         ).fetchall()
-        result = []
-        for row in rows:
-            post = _row_to_post(row)
-            analysis = AnalysisRecord(
-                id=row["a_id"],
-                post_id=post.id,
-                title=row["title"] or "",
-                summary=row["summary"],
-                importance_score=row["importance_score"],
-                urgency_score=row["urgency_score"],
-                credibility_score=row["credibility_score"],
-                relevance_score=row["relevance_score"],
-                category=row["category"],
-                key_entities=json.loads(row["key_entities"] or "[]"),
-                image_insights=row["image_insights"],
-                model_used=row["model_used"],
-                threat_level=row["threat_level"] or "MODERATE",
-            )
-            result.append((post, analysis))
-        return result
+        return _rows_to_pairs(rows)
 
+    def get_posts_with_analyses_in_range(self, start_date_str: str, end_date_str: str) -> list[tuple[PostRecord, AnalysisRecord]]:
+        rows = self._conn.execute(
+            """SELECT p.*, a.id as a_id, a.title, a.summary, a.importance_score, a.urgency_score,
+                      a.credibility_score, a.relevance_score, a.category,
+                      a.key_entities, a.image_insights, a.model_used, a.threat_level
+               FROM posts p
+               JOIN analyses a ON a.post_id = p.id
+               WHERE DATE(p.timestamp) BETWEEN ? AND ?""",
+            (start_date_str, end_date_str),
+        ).fetchall()
+        return _rows_to_pairs(rows)
+
+    def save_intel_assessment(self, date_str: str, intel: dict) -> None:
+        self._conn.execute(
+            """INSERT INTO intel_assessments(date, intel_json) VALUES (?,?)
+               ON CONFLICT(date) DO UPDATE SET
+                 intel_json=excluded.intel_json,
+                 created_at=CURRENT_TIMESTAMP""",
+            (date_str, json.dumps(intel)),
+        )
+        self._conn.commit()
+
+    def get_intel_assessment(self, date_str: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT intel_json FROM intel_assessments WHERE date=?", (date_str,)
+        ).fetchone()
+        return json.loads(row["intel_json"]) if row else None
+
+
+
+def _rows_to_pairs(rows: list[sqlite3.Row]) -> list[tuple[PostRecord, AnalysisRecord]]:
+    result = []
+    for row in rows:
+        post = _row_to_post(row)
+        analysis = AnalysisRecord(
+            id=row["a_id"],
+            post_id=post.id,
+            title=row["title"] or "",
+            summary=row["summary"],
+            importance_score=row["importance_score"],
+            urgency_score=row["urgency_score"],
+            credibility_score=row["credibility_score"],
+            relevance_score=row["relevance_score"],
+            category=row["category"],
+            key_entities=json.loads(row["key_entities"] or "[]"),
+            image_insights=row["image_insights"],
+            model_used=row["model_used"],
+            threat_level=row["threat_level"] or "MODERATE",
+        )
+        result.append((post, analysis))
+    return result
 
 
 def _row_to_post(row: sqlite3.Row) -> PostRecord:

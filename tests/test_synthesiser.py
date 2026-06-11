@@ -1,6 +1,6 @@
 """Tests for synthesiser JSON validation and PDF merge."""
 import pytest
-from tg_compiler.synthesiser import _validate_intel, _prepend_pdf
+from tg_compiler.synthesiser import _validate_intel, _prepend_pdf, _resolve_sources
 
 
 # ---------------------------------------------------------------------------
@@ -10,8 +10,8 @@ from tg_compiler.synthesiser import _validate_intel, _prepend_pdf
 def _good_intel() -> dict:
     return {
         "situation_summary": "Tensions remain elevated across the region.",
-        "key_themes": [{"theme": "Escalation", "detail": "Fighting has intensified."}],
-        "signals_and_warnings": [{"signal": "Airspace closure", "assessment": "Watch for further closures."}],
+        "key_themes": [{"theme": "Escalation", "detail": "Fighting has intensified.", "sources": [1], "continuity": "new"}],
+        "signals_and_warnings": [{"signal": "Airspace closure", "assessment": "Watch for further closures.", "sources": [1]}],
         "named_actors": [{"actor": "PM Netanyahu", "role": "Israeli PM", "activity": "Ordered strikes."}],
     }
 
@@ -55,6 +55,151 @@ def test_validate_intel_named_actors_missing_subkey():
     data = _good_intel()
     data["named_actors"] = [{"actor": "X", "role": "Y"}]  # missing 'activity'
     assert _validate_intel(data) is not None
+
+
+def test_validate_intel_key_themes_missing_sources():
+    data = _good_intel()
+    data["key_themes"] = [{"theme": "X", "detail": "Y"}]  # missing 'sources'
+    assert _validate_intel(data) is not None
+
+
+def test_validate_intel_signals_missing_sources():
+    data = _good_intel()
+    data["signals_and_warnings"] = [{"signal": "X", "assessment": "Y"}]  # missing 'sources'
+    assert _validate_intel(data) is not None
+
+
+# ---------------------------------------------------------------------------
+# _sanitize_intel
+# ---------------------------------------------------------------------------
+
+def test_sanitize_intel_filters_non_int_sources_and_defaults_continuity():
+    from tg_compiler.synthesiser import _sanitize_intel
+
+    data = _good_intel()
+    data["key_themes"][0]["sources"] = [1, "2", 3]
+    data["key_themes"][0]["continuity"] = "bogus"
+    data["signals_and_warnings"][0]["sources"] = ["x", 2]
+
+    clean = _sanitize_intel(data)
+    assert clean["key_themes"][0]["sources"] == [1, 3]
+    assert clean["key_themes"][0]["continuity"] == "new"
+    assert clean["signals_and_warnings"][0]["sources"] == [2]
+
+
+def test_sanitize_intel_keeps_valid_continuity():
+    from tg_compiler.synthesiser import _sanitize_intel
+
+    data = _good_intel()
+    data["key_themes"][0]["continuity"] = "escalating"
+    clean = _sanitize_intel(data)
+    assert clean["key_themes"][0]["continuity"] == "escalating"
+
+
+# ---------------------------------------------------------------------------
+# _resolve_sources
+# ---------------------------------------------------------------------------
+
+def _post_dict(channel_slug, message_id, timestamp):
+    return {
+        "title": "T", "summary": "S", "category": "Other", "threat_level": "MODERATE",
+        "composite_score": 1.0, "channel_slug": channel_slug, "message_id": message_id,
+        "timestamp": timestamp, "entities": [],
+    }
+
+
+def test_resolve_sources_with_channel_link():
+    posts = [_post_dict("chan_a", 42, "2026-06-09T14:30:00+00:00")]
+    items = [{"theme": "X", "detail": "Y", "sources": [1], "continuity": "new"}]
+    resolved = _resolve_sources(items, posts, {"chan_a": "chan_a"})
+    assert resolved[0]["source_links"] == [
+        {"channel_slug": "chan_a", "time_str": "14:30 UTC", "link": "https://t.me/chan_a/42"}
+    ]
+
+
+def test_resolve_sources_without_channel_link():
+    posts = [_post_dict("chan_b", 7, "2026-06-09T08:00:00+00:00")]
+    items = [{"signal": "X", "assessment": "Y", "sources": [1]}]
+    resolved = _resolve_sources(items, posts, {})
+    assert resolved[0]["source_links"] == [{"channel_slug": "chan_b", "time_str": "08:00 UTC"}]
+
+
+def test_resolve_sources_out_of_range_index_ignored():
+    posts = [_post_dict("chan_a", 1, "2026-06-09T08:00:00+00:00")]
+    items = [{"theme": "X", "detail": "Y", "sources": [99], "continuity": "new"}]
+    resolved = _resolve_sources(items, posts, {})
+    assert resolved[0]["source_links"] == []
+
+
+# ---------------------------------------------------------------------------
+# _format_trends / _format_previous_themes
+# ---------------------------------------------------------------------------
+
+def test_format_trends_empty_returns_empty_string():
+    from tg_compiler.synthesiser import _format_trends
+    assert _format_trends(None) == ""
+    assert _format_trends({"entity_deltas": [], "category_deltas": [], "emerging_entities": []}) == ""
+
+
+def test_format_trends_includes_entity_and_category_lines():
+    from tg_compiler.synthesiser import _format_trends
+    trends = {
+        "entity_deltas": [{"entity": "bahrain", "today_count": 14, "prior_count": 0}],
+        "category_deltas": [{"category": "Military", "today_count": 5, "prior_count": 2}],
+        "emerging_entities": ["bahrain"],
+    }
+    text = _format_trends(trends)
+    assert "bahrain: 0 -> 14" in text
+    assert "Military: 2 -> 5" in text
+
+
+def test_format_previous_themes_empty_returns_empty_string():
+    from tg_compiler.synthesiser import _format_previous_themes
+    assert _format_previous_themes(None) == ""
+    assert _format_previous_themes({"key_themes": []}) == ""
+
+
+def test_format_previous_themes_includes_theme_text():
+    from tg_compiler.synthesiser import _format_previous_themes
+    previous = {"key_themes": [{"theme": "Escalation", "detail": "Fighting intensified."}]}
+    text = _format_previous_themes(previous)
+    assert "Escalation" in text
+    assert "Fighting intensified." in text
+
+
+# ---------------------------------------------------------------------------
+# _render_front_page_md
+# ---------------------------------------------------------------------------
+
+def test_render_front_page_md_includes_sources_and_continuity():
+    from datetime import date
+    from tg_compiler.synthesiser import _render_front_page_md
+
+    intel = _good_intel()
+    intel["key_themes"][0]["continuity"] = "escalating"
+    posts = [_post_dict("chan_a", 42, "2026-06-09T14:30:00+00:00")]
+    md = _render_front_page_md(intel, date(2026, 6, 9), posts=posts, channel_links={"chan_a": "chan_a"})
+
+    assert "(escalating)" in md
+    assert "Sources: chan_a (14:30 UTC)" in md
+    assert "https://t.me/chan_a/42" in md
+
+
+def test_render_front_page_md_emerging_section_present_when_nonempty():
+    from datetime import date
+    from tg_compiler.synthesiser import _render_front_page_md
+
+    md = _render_front_page_md(_good_intel(), date(2026, 6, 9), emerging_entities=["bahrain"])
+    assert "Emerging Actors / Topics" in md
+    assert "bahrain" in md
+
+
+def test_render_front_page_md_emerging_section_absent_when_empty():
+    from datetime import date
+    from tg_compiler.synthesiser import _render_front_page_md
+
+    md = _render_front_page_md(_good_intel(), date(2026, 6, 9))
+    assert "Emerging Actors / Topics" not in md
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +291,7 @@ def test_triaged_to_dicts_converts_correctly():
     assert d["threat_level"] == "HIGH"
     assert d["composite_score"] == 3.9
     assert d["channel_slug"] == "chan_a"
+    assert d["message_id"] == 10
     assert d["timestamp"] == "2026-06-09T10:30:00+00:00"
     assert d["entities"] == ["Russia", "Ukraine"]
 

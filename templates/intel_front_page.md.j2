@@ -17,8 +17,11 @@
 ### Key Themes
 
 {% for item in key_themes %}
-**{{ item.theme }}**
+**{{ item.theme }}**{% if item.continuity and item.continuity != "new" %} _({{ item.continuity }})_{% endif %}
 {{ item.detail }}
+{% if item.source_links %}
+*Sources: {% for src in item.source_links %}{{ src.channel_slug }} ({{ src.time_str }}){% if src.link %} ([↗]({{ src.link }})){% endif %}{{ ', ' if not loop.last }}{% endfor %}*
+{% endif %}
 
 {% endfor %}
 
@@ -29,6 +32,9 @@
 {% for item in signals_and_warnings %}
 **⚠ {{ item.signal }}**
 {{ item.assessment }}
+{% if item.source_links %}
+*Sources: {% for src in item.source_links %}{{ src.channel_slug }} ({{ src.time_str }}){% if src.link %} ([↗]({{ src.link }})){% endif %}{{ ', ' if not loop.last }}{% endfor %}*
+{% endif %}
 
 {% endfor %}
 
@@ -43,3 +49,13 @@
 {% endfor %}
 
 ---
+
+{% if emerging_entities %}
+### Emerging Actors / Topics
+
+{% for entity in emerging_entities %}
+- {{ entity }}
+{% endfor %}
+
+---
+{% endif %}

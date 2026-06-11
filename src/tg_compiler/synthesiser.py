@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import tempfile
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
@@ -13,6 +13,7 @@ from openai import OpenAI
 
 from tg_compiler.config import AppConfig
 from tg_compiler.db import Database
+from tg_compiler.trends import TREND_WINDOW_DAYS, compute_trends
 from tg_compiler.utils import escape_html
 
 log = logging.getLogger(__name__)
@@ -27,16 +28,42 @@ _SYNTHESIS_SYSTEM = (
 )
 
 _SYNTHESIS_INSTRUCTIONS = """
+Each report above has an "index" field. When you cite supporting evidence below, reference these indices.
+
 Based on these intelligence reports, produce a JSON object with exactly these four keys:
 
-"situation_summary": A 3-5 sentence executive overview of the overall geopolitical situation. Write as an intelligence analyst, not a journalist. Be direct and specific — name actors, locations, and developments.
+"situation_summary": A 3-5 sentence executive overview of the overall geopolitical situation. Write as an intelligence analyst, not a journalist. Be direct and specific — name actors, locations, and developments. If a 7-DAY MENTION TRENDS table is provided, incorporate notable trend shifts into the assessment.
 
-"key_themes": An array of 3-5 objects. Each object: {"theme": "<short title>", "detail": "<2-3 sentences explaining what events are connected and why the pattern matters>"}
+"key_themes": An array of 3-5 objects. Each object: {"theme": "<short title>", "detail": "<2-3 sentences explaining what events are connected and why the pattern matters>", "sources": [<indices of reports supporting this theme>], "continuity": "new"|"confirmed"|"escalating"|"retired" — if PREVIOUS ASSESSMENT THEMES are provided, set this relative to whether this theme matches one of them (confirmed/escalating if it continues, retired if a previous theme no longer applies); otherwise use "new"}
 
-"signals_and_warnings": An array of 3-5 objects. Each object: {"signal": "<short title>", "assessment": "<what could develop next and what observable indicators to watch for>"}
+"signals_and_warnings": An array of 3-5 objects. Each object: {"signal": "<short title>", "assessment": "<what could develop next and what observable indicators to watch for>", "sources": [<indices of reports supporting this signal>]}
 
 "named_actors": An array of the 4-6 most significant actors from today's reporting. Each object: {"actor": "<name>", "role": "<one short phrase>", "activity": "<1-2 sentences on what they did today and its significance>"}
 """
+
+
+def _format_trends(trends: dict | None) -> str:
+    if not trends or not (trends.get("entity_deltas") or trends.get("category_deltas")):
+        return ""
+    lines = [f"\n{TREND_WINDOW_DAYS}-DAY MENTION TRENDS (prior-days total -> today's count):"]
+    if trends.get("entity_deltas"):
+        lines.append("Entities:")
+        for d in trends["entity_deltas"]:
+            lines.append(f'- {d["entity"]}: {d["prior_count"]} -> {d["today_count"]}')
+    if trends.get("category_deltas"):
+        lines.append("Categories:")
+        for d in trends["category_deltas"]:
+            lines.append(f'- {d["category"]}: {d["prior_count"]} -> {d["today_count"]}')
+    return "\n".join(lines)
+
+
+def _format_previous_themes(previous_intel: dict | None) -> str:
+    if not previous_intel or not previous_intel.get("key_themes"):
+        return ""
+    lines = ["\nPREVIOUS ASSESSMENT THEMES (assess whether each is new, confirmed, escalating, or retired today):"]
+    for theme in previous_intel["key_themes"]:
+        lines.append(f'- "{theme.get("theme", "")}": {theme.get("detail", "")}')
+    return "\n".join(lines)
 
 
 def _validate_intel(data: dict) -> str | None:
@@ -54,16 +81,20 @@ def _validate_intel(data: dict) -> str | None:
     for item in data["key_themes"]:
         if "theme" not in item or "detail" not in item:
             return "key_themes item missing 'theme' or 'detail'"
+        if "sources" not in item or not isinstance(item["sources"], list):
+            return "key_themes item missing 'sources' list"
     for item in data["signals_and_warnings"]:
         if "signal" not in item or "assessment" not in item:
             return "signals_and_warnings item missing 'signal' or 'assessment'"
+        if "sources" not in item or not isinstance(item["sources"], list):
+            return "signals_and_warnings item missing 'sources' list"
     for item in data["named_actors"]:
         if "actor" not in item or "role" not in item or "activity" not in item:
             return "named_actors item missing required sub-key"
     return None
 
 
-async def synthesise(config: AppConfig, posts: list[dict]) -> dict | None:
+async def synthesise(config: AppConfig, posts: list[dict], trends: dict | None = None, previous_intel: dict | None = None) -> dict | None:
     cfg = config.lmstudio
     try:
         client = OpenAI(
@@ -78,16 +109,19 @@ async def synthesise(config: AppConfig, posts: list[dict]) -> dict | None:
     # Keep only the fields the synthesis LLM needs; drop scoring/routing metadata.
     synthesis_posts = [
         {
+            "index": i + 1,
             "title": p.get("title", ""),
             "summary": p.get("summary", ""),
             "category": p.get("category", ""),
             "threat_level": p.get("threat_level", ""),
             "entities": p.get("entities", []),
         }
-        for p in posts
+        for i, p in enumerate(posts)
     ]
     posts_json = json.dumps(synthesis_posts, ensure_ascii=False, default=str)
-    user_message = f"{posts_json}\n{_SYNTHESIS_INSTRUCTIONS}"
+    trend_block = _format_trends(trends)
+    continuity_block = _format_previous_themes(previous_intel)
+    user_message = f"{posts_json}\n{trend_block}\n{continuity_block}\n{_SYNTHESIS_INSTRUCTIONS}"
 
     try:
         response = await asyncio.to_thread(
@@ -151,16 +185,28 @@ async def synthesise(config: AppConfig, posts: list[dict]) -> dict | None:
     return data
 
 
+_VALID_CONTINUITY = {"new", "confirmed", "escalating", "retired"}
+
+
 def _sanitize_intel(intel: dict) -> dict:
     s = escape_html
+
+    def sources(item: dict) -> list[int]:
+        return [x for x in item.get("sources", []) if isinstance(x, int)]
+
     return {
         "situation_summary": s(intel["situation_summary"]),
         "key_themes": [
-            {"theme": s(i["theme"]), "detail": s(i["detail"])}
+            {
+                "theme": s(i["theme"]),
+                "detail": s(i["detail"]),
+                "sources": sources(i),
+                "continuity": i.get("continuity") if i.get("continuity") in _VALID_CONTINUITY else "new",
+            }
             for i in intel["key_themes"]
         ],
         "signals_and_warnings": [
-            {"signal": s(i["signal"]), "assessment": s(i["assessment"])}
+            {"signal": s(i["signal"]), "assessment": s(i["assessment"]), "sources": sources(i)}
             for i in intel["signals_and_warnings"]
         ],
         "named_actors": [
@@ -168,6 +214,25 @@ def _sanitize_intel(intel: dict) -> dict:
             for i in intel["named_actors"]
         ],
     }
+
+
+def _resolve_sources(items: list[dict], posts: list[dict], channel_links: dict[str, str]) -> list[dict]:
+    resolved = []
+    for item in items:
+        source_links = []
+        for idx in item.get("sources", []):
+            if not (1 <= idx <= len(posts)):
+                continue
+            post = posts[idx - 1]
+            slug = post["channel_slug"]
+            ts = datetime.fromisoformat(post["timestamp"])
+            entry = {"channel_slug": slug, "time_str": ts.strftime("%H:%M UTC")}
+            username = channel_links.get(slug)
+            if username:
+                entry["link"] = f"https://t.me/{username}/{post['message_id']}"
+            source_links.append(entry)
+        resolved.append({**item, "source_links": source_links})
+    return resolved
 
 
 def _triaged_to_dicts(main_items: list) -> list[dict]:
@@ -179,6 +244,7 @@ def _triaged_to_dicts(main_items: list) -> list[dict]:
             "threat_level": item.analysis.threat_level,
             "composite_score": item.composite_score,
             "channel_slug": item.post.channel_name,
+            "message_id": item.post.message_id,
             "timestamp": item.post.timestamp.isoformat(),
             "entities": item.analysis.key_entities,
         }
@@ -186,16 +252,25 @@ def _triaged_to_dicts(main_items: list) -> list[dict]:
     ]
 
 
-def _render_front_page_md(intel: dict, target_date: date) -> str:
+def _render_front_page_md(
+    intel: dict,
+    target_date: date,
+    posts: list[dict] | None = None,
+    channel_links: dict[str, str] | None = None,
+    emerging_entities: list[str] | None = None,
+) -> str:
     env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=False)
     tmpl = env.get_template("intel_front_page.md.j2")
     clean = _sanitize_intel(intel)
+    posts = posts or []
+    channel_links = channel_links or {}
     return tmpl.render(
         date=target_date.strftime("%A, %-d %B %Y"),
         situation_summary=clean["situation_summary"],
-        key_themes=clean["key_themes"],
-        signals_and_warnings=clean["signals_and_warnings"],
+        key_themes=_resolve_sources(clean["key_themes"], posts, channel_links),
+        signals_and_warnings=_resolve_sources(clean["signals_and_warnings"], posts, channel_links),
         named_actors=clean["named_actors"],
+        emerging_entities=emerging_entities or [],
     )
 
 
@@ -246,10 +321,11 @@ async def run_analysis(config: AppConfig, target_date: date, main_items=None) ->
         return
     briefing_path = pdfs[-1]
 
+    db = Database(config.storage.db_path)
+    db.init_schema()
+
     if main_items is None:
         from tg_compiler.triage import triage as do_triage
-        db = Database(config.storage.db_path)
-        db.init_schema()
         pairs = db.get_days_posts_with_analyses(date_str)
         if not pairs:
             log.error(
@@ -270,12 +346,25 @@ async def run_analysis(config: AppConfig, target_date: date, main_items=None) ->
         )
         return
 
+    history_start = (target_date - timedelta(days=TREND_WINDOW_DAYS - 1)).isoformat()
+    history = db.get_posts_with_analyses_in_range(history_start, date_str)
+    trends = compute_trends(history, target_date)
+
+    previous_intel = db.get_intel_assessment((target_date - timedelta(days=1)).isoformat())
+
     log.info("Synthesising intelligence assessment from %d posts…", len(posts))
-    intel = await synthesise(config, posts)
+    intel = await synthesise(config, posts, trends=trends, previous_intel=previous_intel)
     if intel is None:
         return
 
-    md = _render_front_page_md(intel, target_date)
+    db.save_intel_assessment(date_str, intel)
+
+    channel_links = {
+        ch.slug: ch.username.lstrip("@")
+        for ch in config.telegram.channels
+        if ch.username
+    }
+    md = _render_front_page_md(intel, target_date, posts=posts, channel_links=channel_links, emerging_entities=trends["emerging_entities"])
     front_page_pdf = _md_to_pdf(md, date_str, date_dir)
 
     try:

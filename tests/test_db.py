@@ -1,4 +1,5 @@
-from tg_compiler.db import AnalysisRecord
+from datetime import datetime, timezone
+from tg_compiler.db import AnalysisRecord, PostRecord
 
 
 def test_insert_and_fetch_post(db, sample_post):
@@ -53,3 +54,44 @@ def test_insert_analysis_and_joined_query(db, sample_post):
     assert post.message_id == 42
     assert analysis.importance_score == 3
     assert "Alice" in analysis.key_entities
+
+
+def test_get_intel_assessment_returns_none_when_missing(db):
+    assert db.get_intel_assessment("2026-06-07") is None
+
+
+def test_save_and_get_intel_assessment_round_trip(db):
+    intel = {"situation_summary": "Calm.", "key_themes": []}
+    db.save_intel_assessment("2026-06-07", intel)
+    assert db.get_intel_assessment("2026-06-07") == intel
+
+
+def test_save_intel_assessment_overwrites_on_conflict(db):
+    db.save_intel_assessment("2026-06-07", {"situation_summary": "First."})
+    db.save_intel_assessment("2026-06-07", {"situation_summary": "Second."})
+    assert db.get_intel_assessment("2026-06-07")["situation_summary"] == "Second."
+
+
+def _post(message_id, day):
+    return PostRecord(
+        channel_id=100, channel_name="test_chan", message_id=message_id,
+        timestamp=datetime(2026, 6, day, 12, 0, tzinfo=timezone.utc),
+        text="x", media_paths=[], has_images=False, raw_json="{}",
+    )
+
+
+def _record(post_id):
+    return AnalysisRecord(
+        post_id=post_id, summary="s", importance_score=3, urgency_score=2,
+        credibility_score=4, relevance_score=3, category="Analysis",
+        key_entities=[], model_used="test-model",
+    )
+
+
+def test_get_posts_with_analyses_in_range(db):
+    for day, msg_id in [(5, 1), (7, 2), (9, 3)]:
+        post_id = db.insert_post(_post(msg_id, day))
+        db.insert_analysis(_record(post_id))
+
+    results = db.get_posts_with_analyses_in_range("2026-06-06", "2026-06-08")
+    assert [p.message_id for p, _ in results] == [2]
