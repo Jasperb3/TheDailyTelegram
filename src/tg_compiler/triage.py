@@ -2,7 +2,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timezone
 
 from tg_compiler.config import TriageConfig
 from tg_compiler.db import PostRecord, AnalysisRecord
@@ -28,6 +28,8 @@ class BriefingContent:
     # slug → bare username (no @) for building t.me deep links
     channel_links: dict[str, str] = field(default_factory=dict)
     category_counts: dict[str, int] = field(default_factory=dict)
+    # Executive Summary items: all CRITICAL items, then highest-scoring others, capped at 10
+    executive_items: list[TriagedPost] = field(default_factory=list)
 
 
 def _composite(a: AnalysisRecord) -> float:
@@ -37,6 +39,12 @@ def _composite(a: AnalysisRecord) -> float:
         + 0.2 * a.credibility_score
         + 0.1 * a.relevance_score
     )
+
+
+def _recency_multiplier(post_time: datetime, now: datetime, half_life_hours: float, floor: float) -> float:
+    age_hours = max(0.0, (now - post_time).total_seconds() / 3600)
+    multiplier = 0.5 ** (age_hours / half_life_hours)
+    return max(floor, multiplier)
 
 
 def _jaccard(a: str, b: str, min_len: int = 3) -> float:
@@ -53,18 +61,23 @@ def _is_duplicate(
     time_window_secs: float,
     entity_cluster_window_secs: float = 86400,
     threshold: float = 0.28,
+    summary_window_secs: float | None = None,
 ) -> bool:
+    if summary_window_secs is None:
+        summary_window_secs = time_window_secs
+
     for existing in kept:
         delta = abs(
             (candidate.post.timestamp - existing.post.timestamp).total_seconds()
         )
+        if delta <= summary_window_secs:
+            if _jaccard(candidate.analysis.summary, existing.analysis.summary) >= threshold:
+                return True
+            if candidate.analysis.title and existing.analysis.title:
+                if _jaccard(candidate.analysis.title, existing.analysis.title) >= threshold:
+                    return True
         if delta > time_window_secs:
             continue
-        if _jaccard(candidate.analysis.summary, existing.analysis.summary) >= threshold:
-            return True
-        if candidate.analysis.title and existing.analysis.title:
-            if _jaccard(candidate.analysis.title, existing.analysis.title) >= threshold:
-                return True
         # Entity overlap: ≥3 shared named entities within time window
         cand_entities = {e.lower() for e in candidate.analysis.key_entities}
         exist_entities = {e.lower() for e in existing.analysis.key_entities}
@@ -95,6 +108,7 @@ def triage(
     channel_priorities: dict[str, float] | None = None,
 ) -> BriefingContent:
     today = today or date.today()
+    now = datetime.now(timezone.utc)
     scored: list[TriagedPost] = []
 
     for post, analysis in pairs:
@@ -113,6 +127,7 @@ def triage(
                 score = min(5.0, score + config.keyword_boost)
                 break
         score = min(5.0, score)
+        score *= _recency_multiplier(post.timestamp, now, config.recency_half_life_hours, config.recency_floor)
         scored.append(TriagedPost(post=post, analysis=analysis, composite_score=score))
 
     scored.sort(key=lambda t: (
@@ -122,12 +137,14 @@ def triage(
     ))
 
     # Deduplicate: keep highest-scoring report per story cluster.
-    # Two posts are duplicates if they share ≥35% words in summary/title
-    # AND are within a 2-hour window.
+    # Two posts are duplicates if they share >= dedup threshold words in summary/title
+    # within dedup_summary_window_secs, or share enough named entities within the
+    # other configured windows (see _is_duplicate).
     kept: list[TriagedPost] = []
     for item in scored:
         if not _is_duplicate(item, kept, time_window_secs=config.dedup_window_secs,
-                              entity_cluster_window_secs=config.entity_cluster_window_secs):
+                              entity_cluster_window_secs=config.entity_cluster_window_secs,
+                              summary_window_secs=config.dedup_summary_window_secs):
             kept.append(item)
 
     main_scored = [t for t in kept if t.composite_score >= config.min_composite_score]
@@ -142,10 +159,17 @@ def triage(
     category_counts = dict(Counter(t.analysis.category for t in all_kept))
     channel_names = sorted({p.channel_name for p, _ in pairs})
 
+    # Executive Summary: every CRITICAL item is guaranteed a slot, regardless of score,
+    # then filled with the highest-scoring remaining items up to 10.
+    critical_items = [t for t in main_items if t.analysis.threat_level == "CRITICAL"]
+    other_items = [t for t in main_items if t.analysis.threat_level != "CRITICAL"]
+    executive_items = (critical_items + other_items)[:10]
+
     return BriefingContent(
         date=today,
         main_items=main_items,
         appendix_items=appendix_items,
         channel_names=channel_names,
         category_counts=category_counts,
+        executive_items=executive_items,
     )

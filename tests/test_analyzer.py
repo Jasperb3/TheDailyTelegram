@@ -196,3 +196,29 @@ async def test_process_unanalysed_skips_short_textonly_post(db, app_config, monk
     assert by_id[1].category == "Skipped"
     assert by_id[1].importance_score is None
     assert by_id[2].category == "Analysis"
+
+
+def test_clean_image_insights_rejects_none_provided():
+    assert _clean_image_insights("None provided") is None
+    assert _clean_image_insights("none provided.") is None
+
+
+def test_sanitize_escapes_html_in_summary_and_title():
+    pa = _analysis(
+        title="Breaking <b>news</b> & updates",
+        summary="A report mentions <script>alert(1)</script> & other things.",
+        key_entities=["<img onerror=alert(1)>"],
+    )
+    result = _sanitize(pa)
+    assert "<" not in result.title and ">" not in result.title
+    assert "&lt;" in result.title
+    assert "<script>" not in result.summary
+    assert "&lt;script&gt;" in result.summary
+    assert "&amp;" in result.summary
+    assert all("<" not in e and ">" not in e for e in result.key_entities)
+
+
+def test_sanitize_escapes_image_description():
+    pa = _analysis(image_description="A photo shows troops & vehicles moving near the border.")
+    result = _sanitize(pa)
+    assert "&amp;" in result.image_description

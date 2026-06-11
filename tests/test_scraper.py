@@ -57,3 +57,32 @@ async def test_scrape_channel_returns_empty_on_get_entity_failure(db, scraper_co
 
     posts = await scraper.scrape_channel(channel_cfg)
     assert posts == []
+
+
+async def test_scrape_channel_does_not_cap_iter_messages_limit(db, scraper_config, monkeypatch):
+    channel_cfg = scraper_config.telegram.channels[0]
+    scraper = Scraper(scraper_config, db)
+
+    class FakeEntity:
+        id = 12345
+
+    async def fake_get_entity(entity):
+        return FakeEntity()
+
+    captured_kwargs = {}
+
+    def fake_iter_messages(entity, **kwargs):
+        captured_kwargs.update(kwargs)
+
+        async def _empty_gen():
+            return
+            yield
+
+        return _empty_gen()
+
+    monkeypatch.setattr(scraper._client, "get_entity", fake_get_entity)
+    monkeypatch.setattr(scraper._client, "iter_messages", fake_iter_messages)
+
+    await scraper.scrape_channel(channel_cfg)
+
+    assert captured_kwargs["limit"] is None

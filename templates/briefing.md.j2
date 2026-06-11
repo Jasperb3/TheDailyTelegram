@@ -1,7 +1,7 @@
 ## Executive Summary
 
 <div class="exec-summary">
-{% for item in content.main_items[:10] -%}
+{% for item in content.executive_items -%}
 {% set username = content.channel_links.get(item.post.channel_name, '') -%}
 <div class="exec-item">{{ threat_badge(item.analysis.threat_level) }} &nbsp;<span class="cat-slug">{{ item.analysis.category }}</span> — {{ item.analysis.title if item.analysis.title else item.analysis.summary[:90] ~ ('…' if item.analysis.summary|length > 90 else '') }} <span class="exec-meta">({{ item.post.channel_name }}, {{ item.post.timestamp.strftime('%H:%M UTC') }}{% if username %} · <a href="https://t.me/{{ username }}/{{ item.post.message_id }}">↗</a>{% endif %})</span></div>
 {% else -%}
@@ -24,12 +24,10 @@
 
 **Entities:** {{ item.analysis.key_entities | clean_entities | join(', ') or '—' }}
 
-{% if item.analysis.image_insights and item.analysis.image_insights | lower not in ('n/a', 'none', 'no image provided', 'no image provided.', 'no image.') and item.analysis.image_insights | length > 10 %}
-{% if item.post.has_video %}**Video:** {% else %}**Image:** {% endif %}{{ item.analysis.image_insights }}
-{% endif %}
-
 {% if item.post.has_video %}
-**Video:** _[▶ Watch on Telegram](https://t.me/{{ username }}/{{ item.post.message_id }})_
+**Video:** {% if item.analysis.image_insights %}{{ item.analysis.image_insights }} {% endif %}_[▶ Watch on Telegram](https://t.me/{{ username }}/{{ item.post.message_id }})_
+{% elif item.analysis.image_insights %}
+**Image:** {{ item.analysis.image_insights }}
 {% endif %}
 
 {% if item.post.media_paths %}

@@ -1,24 +1,13 @@
 from __future__ import annotations
+import html
 import re
 
-# Tags whose content is also dangerous (strip the tag AND everything inside)
-_BLOCK_TAGS = re.compile(
-    r'<(script|style|iframe|object|embed|form)[^>]*>.*?</\1>',
-    re.IGNORECASE | re.DOTALL,
-)
-# Void/self-closing dangerous tags — strip the tag only
-_VOID_TAGS = re.compile(
-    r'<(meta|link|base|input)[^>]*/?>',
-    re.IGNORECASE,
-)
 
-
-def strip_dangerous_html(text: str) -> str:
+def escape_html(text: str) -> str:
+    """Escape &, < and > in LLM-derived text so it can't inject markup into rendered output."""
     if not text:
         return text
-    text = _BLOCK_TAGS.sub('', text)
-    text = _VOID_TAGS.sub('', text)
-    return text
+    return html.escape(text, quote=False)
 
 _ENTITY_GARBAGE = re.compile(
     r'[`{}<>\[\]]|json|PostAnalysis|importance_score|urgency_score'

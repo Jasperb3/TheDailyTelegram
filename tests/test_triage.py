@@ -10,7 +10,7 @@ def make_pair(
     summary="A test post summary.", title="", channel_name="test",
     timestamp=None,
 ):
-    ts = timestamp or datetime(2026, 6, 7, 12, 0, tzinfo=timezone.utc)
+    ts = timestamp or datetime.now(timezone.utc)
     post = PostRecord(
         id=msg_id, channel_id=1, channel_name=channel_name, message_id=msg_id,
         timestamp=ts,
@@ -119,10 +119,10 @@ def test_dedup_keeps_dissimilar_posts():
 
 
 def test_dedup_ignores_outside_time_window():
-    # Same summary text but >2 hours apart → both kept (different events)
+    # Same summary text but beyond the 6h summary-similarity window → both kept (different events)
     summary = "Israeli airstrikes hit Dahiyeh suburb of Beirut Lebanon"
     p1, a1 = make_pair(msg_id=1, summary=summary,
-                       timestamp=datetime(2026, 6, 7, 8, 0, tzinfo=timezone.utc))
+                       timestamp=datetime(2026, 6, 7, 2, 0, tzinfo=timezone.utc))
     p2, a2 = make_pair(msg_id=2, summary=summary,
                        timestamp=datetime(2026, 6, 7, 12, 0, tzinfo=timezone.utc))
     config = TriageConfig(min_composite_score=0.0)
@@ -276,3 +276,81 @@ def test_skipped_category_excluded_from_main_and_appendix():
     result = triage([(post, analysis)], config)
     assert result.main_items == []
     assert result.appendix_items == []
+
+
+def test_dedup_extends_to_6h_summary_window():
+    # Real-world regression: 2h19m apart, similar wording, just past the old 2h cutoff.
+    p1, a1 = make_pair(
+        msg_id=1, importance=5,
+        title="Iran launches missiles at U.S. targets",
+        summary="Reports indicate Iran launched missiles targeting US bases overnight.",
+        timestamp=datetime(2026, 6, 7, 2, 45, tzinfo=timezone.utc),
+    )
+    p2, a2 = make_pair(
+        msg_id=2, importance=3,
+        title="Iran launches ballistic missiles at US military sites",
+        summary="Iran launched ballistic missiles at US military sites overnight.",
+        timestamp=datetime(2026, 6, 7, 5, 4, tzinfo=timezone.utc),
+    )
+    config = TriageConfig(min_composite_score=0.0)
+    result = triage([(p1, a1), (p2, a2)], config)
+    total = len(result.main_items) + len(result.appendix_items)
+    assert total == 1
+    kept = (result.main_items + result.appendix_items)[0]
+    assert kept.post.message_id == 1
+
+
+def test_recency_decay_demotes_older_post():
+    now = datetime.now(timezone.utc)
+    recent_post, recent_analysis = make_pair(msg_id=1, importance=4, urgency=4, credibility=4, relevance=4,
+                                              timestamp=now - timedelta(hours=1),
+                                              summary="A recent breaking development overseas")
+    old_post, old_analysis = make_pair(msg_id=2, importance=4, urgency=4, credibility=4, relevance=4,
+                                        timestamp=now - timedelta(hours=26),
+                                        summary="An older unrelated development happened yesterday")
+    config = TriageConfig(min_composite_score=0.0)
+    result = triage([(recent_post, recent_analysis), (old_post, old_analysis)], config)
+    by_id = {t.post.message_id: t.composite_score for t in result.main_items}
+    assert by_id[1] > by_id[2]
+
+
+def test_recency_floor_caps_decay():
+    now = datetime.now(timezone.utc)
+    post, analysis = make_pair(importance=4, urgency=4, credibility=4, relevance=4,
+                                timestamp=now - timedelta(days=10))
+    config = TriageConfig(min_composite_score=0.0, recency_half_life_hours=12.0, recency_floor=0.6)
+    result = triage([(post, analysis)], config)
+    base = 0.4 * 4 + 0.3 * 4 + 0.2 * 4 + 0.1 * 4
+    assert abs(result.main_items[0].composite_score - base * 0.6) < 0.001
+
+
+def test_executive_items_includes_all_critical_regardless_of_score():
+    summaries = [
+        "Airstrikes hit Beirut overnight causing significant damage",
+        "Ceasefire negotiations collapsed after delegates walked out",
+        "President signed emergency decree expanding military powers",
+        "Floods displaced thousands across southern provinces",
+        "Opposition leader arrested on espionage charges",
+        "Oil pipeline sabotaged near border crossing",
+        "Evacuation ordered for coastal settlements ahead of storm",
+        "Diplomatic envoy expelled following spy scandal",
+        "Rebel forces captured strategic bridge over river",
+        "Parliament dissolved after vote of no confidence passed",
+    ]
+    pairs = []
+    # 10 high-scoring HIGH-severity items fill the executive summary
+    for i in range(10):
+        post, analysis = make_pair(msg_id=i, importance=5, urgency=5, credibility=5, relevance=5,
+                                    summary=summaries[i])
+        analysis.threat_level = "HIGH"
+        pairs.append((post, analysis))
+    # One CRITICAL item with a low composite score
+    crit_post, crit_analysis = make_pair(msg_id=99, importance=2, urgency=2, credibility=2, relevance=2,
+                                          summary="A critical low-scored but urgent unrelated alert")
+    crit_analysis.threat_level = "CRITICAL"
+    pairs.append((crit_post, crit_analysis))
+
+    config = TriageConfig(min_composite_score=0.0, max_main_items=20)
+    result = triage(pairs, config)
+    assert len(result.executive_items) == 10
+    assert any(t.post.message_id == 99 for t in result.executive_items)

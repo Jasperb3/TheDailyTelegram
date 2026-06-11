@@ -46,7 +46,7 @@ async def run_batch(config: AppConfig) -> None:
 
     db = Database(config.storage.db_path)
     db.init_schema()
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
 
     from tqdm import tqdm
     from tqdm.contrib.logging import logging_redirect_tqdm
@@ -102,7 +102,7 @@ async def schedule_daily_generation(config: AppConfig) -> None:
             target += timedelta(days=1)
         await asyncio.sleep((target - now).total_seconds())
 
-        today = datetime.now(tz).date()
+        today = datetime.now(timezone.utc).date()
         db = Database(config.storage.db_path)
         db.init_schema()
         _, content = await generate_daily_briefing(config, today, db)
@@ -184,7 +184,13 @@ async def run_daemon(config: AppConfig) -> None:
                 except Exception as e:
                     log.error("Analysis failed for post %s: %s", msg.id, e)
 
-        asyncio.create_task(schedule_daily_generation(config))
+        scheduler_task = asyncio.create_task(schedule_daily_generation(config))
+
+        def _on_scheduler_done(task: asyncio.Task) -> None:
+            if not task.cancelled() and task.exception() is not None:
+                log.error("Daily generation scheduler crashed", exc_info=task.exception())
+
+        scheduler_task.add_done_callback(_on_scheduler_done)
         log.info("Daemon running on %d channels", len(channel_entities))
         await client.run_until_disconnected()
     finally:
@@ -248,12 +254,12 @@ def main() -> None:
         asyncio.run(run_daemon(cfg))
     elif args.analyse:
         from tg_compiler.synthesiser import run_analysis
-        target_date = since_dt.date() if since_dt else date.today()
+        target_date = since_dt.date() if since_dt else datetime.now(timezone.utc).date()
         asyncio.run(run_analysis(cfg, target_date))
     elif args.generate:
         db = Database(cfg.storage.db_path)
         db.init_schema()
-        out, _ = asyncio.run(generate_daily_briefing(cfg, date.today(), db))
+        out, _ = asyncio.run(generate_daily_briefing(cfg, datetime.now(timezone.utc).date(), db))
         print(f"Generated: {out}")
 
 

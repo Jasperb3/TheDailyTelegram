@@ -61,3 +61,57 @@ async def test_run_batch_continues_after_one_channel_fails(tmp_path, batch_confi
     await main_module.run_batch(batch_config)
 
     assert scraped_channels == ["chan_a", "chan_c"]
+
+
+@pytest.fixture
+def daemon_config(tmp_path):
+    return AppConfig(
+        telegram=TelegramConfig(
+            api_id=1, api_hash="x", session_name=str(tmp_path / "session"),
+            channels=[ChannelConfig(slug="chan_a", username="@chan_a")],
+        ),
+        lmstudio=LMStudioConfig(model="m"),
+    )
+
+
+async def test_run_daemon_logs_scheduler_crash(tmp_path, daemon_config, monkeypatch, caplog):
+    import asyncio
+    import logging
+    import telethon
+
+    daemon_config.storage.db_path = str(tmp_path / "db.sqlite")
+
+    class FakeEntity:
+        id = 1
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def start(self):
+            return None
+
+        async def get_entity(self, identifier):
+            return FakeEntity()
+
+        def on(self, *args, **kwargs):
+            def decorator(fn):
+                return fn
+            return decorator
+
+        async def run_until_disconnected(self):
+            await asyncio.sleep(0.05)
+
+        async def disconnect(self):
+            return None
+
+    async def fake_schedule_daily_generation(config):
+        raise RuntimeError("scheduler boom")
+
+    monkeypatch.setattr(telethon, "TelegramClient", FakeClient)
+    monkeypatch.setattr(main_module, "schedule_daily_generation", fake_schedule_daily_generation)
+
+    with caplog.at_level(logging.ERROR):
+        await main_module.run_daemon(daemon_config)
+
+    assert any("Daily generation scheduler crashed" in r.message for r in caplog.records)

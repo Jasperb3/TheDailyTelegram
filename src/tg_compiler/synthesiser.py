@@ -13,7 +13,7 @@ from openai import OpenAI
 
 from tg_compiler.config import AppConfig
 from tg_compiler.db import Database
-from tg_compiler.utils import strip_dangerous_html
+from tg_compiler.utils import escape_html
 
 log = logging.getLogger(__name__)
 
@@ -152,7 +152,7 @@ async def synthesise(config: AppConfig, posts: list[dict]) -> dict | None:
 
 
 def _sanitize_intel(intel: dict) -> dict:
-    s = strip_dangerous_html
+    s = escape_html
     return {
         "situation_summary": s(intel["situation_summary"]),
         "key_themes": [

@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from tg_compiler.config import AppConfig, ChannelConfig
 from tg_compiler.db import Database, PostRecord, AnalysisRecord
-from tg_compiler.utils import clean_entities, strip_dangerous_html, _ENTITY_GARBAGE
+from tg_compiler.utils import clean_entities, escape_html, _ENTITY_GARBAGE
 
 log = logging.getLogger(__name__)
 
@@ -81,7 +81,8 @@ def _clean_image_insights(text: str | None) -> str | None:
         return None
     stripped = text.strip()
     if stripped.lower() in ('n/a', 'none', 'no image provided', 'no image provided.',
-                             'no image.', 'no image', 'na', ''):
+                             'no image.', 'no image', 'na', '', 'none provided',
+                             'none provided.', 'no video provided', 'no video provided.'):
         return None
     low = stripped.lower()
     if (
@@ -187,7 +188,6 @@ def _sanitize(analysis: PostAnalysis) -> PostAnalysis:
     analysis.title = _clean_title(analysis.title)
     if _REFUSAL_RE.search(analysis.title):
         analysis.title = ""
-    analysis.summary = strip_dangerous_html(analysis.summary)
     if _REFUSAL_RE.search(analysis.summary):
         analysis.summary = ""
     analysis.key_entities = clean_entities(analysis.key_entities)
@@ -196,6 +196,12 @@ def _sanitize(analysis: PostAnalysis) -> PostAnalysis:
         analysis.summary, analysis.image_description
     ):
         analysis.image_description = None
+
+    analysis.title = escape_html(analysis.title)
+    analysis.summary = escape_html(analysis.summary)
+    analysis.key_entities = [escape_html(e) for e in analysis.key_entities]
+    if analysis.image_description:
+        analysis.image_description = escape_html(analysis.image_description)
     return analysis
 
 

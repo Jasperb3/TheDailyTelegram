@@ -37,7 +37,10 @@ class TriageConfig(BaseModel):
     min_composite_score: float = 2.5
     max_main_items: int = 50
     dedup_window_secs: int = 7200       # max age gap (seconds) for cross-channel dedup
+    dedup_summary_window_secs: int = 21600  # window (6h) for summary/title Jaccard similarity dedup
     entity_cluster_window_secs: int = 86400  # wider window for entity-cluster dedup (24h)
+    recency_half_life_hours: float = 12.0  # composite score halves every this many hours of post age
+    recency_floor: float = 0.6          # minimum recency multiplier, however old the post
 
 
 class GenerationConfig(BaseModel):
