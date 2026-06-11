@@ -493,3 +493,42 @@ def test_executive_items_includes_critical_from_appendix():
     result = triage([(crit_post, crit_analysis), (high_post, high_analysis)], config)
     assert any(t.post.message_id == 99 for t in result.appendix_items)
     assert any(t.post.message_id == 99 for t in result.executive_items)
+
+def test_same_channel_duplicates_recorded_but_not_boosted():
+    base_ts = datetime.now(timezone.utc)
+    summary = "Israeli airstrikes were reported in the Dahiyeh suburb of Beirut Lebanon"
+    p1, a1 = make_pair(importance=5, urgency=5, credibility=5, relevance=5, msg_id=1,
+                        summary=summary, channel_name="chan_a", timestamp=base_ts)
+    p2, a2 = make_pair(importance=3, msg_id=2,
+                        summary="Israeli airstrikes reported in Dahiyeh suburb Beirut",
+                        channel_name="chan_a", timestamp=base_ts + timedelta(minutes=30))
+
+    config = TriageConfig(min_composite_score=0.0, corroboration_weight=0.15, corroboration_cap=1.5)
+    result = triage([(p1, a1), (p2, a2)], config)
+    kept = (result.main_items + result.appendix_items)[0]
+    assert len(kept.corroborations) == 1   # still merged as a duplicate
+    assert abs(kept.composite_score - 5.0) < 0.01  # but no corroboration boost
+
+
+def test_corroboration_boost_counts_distinct_other_channels():
+    base_ts = datetime.now(timezone.utc)
+    summary = "Israeli airstrikes were reported in the Dahiyeh suburb of Beirut Lebanon"
+    p1, a1 = make_pair(importance=5, urgency=5, credibility=5, relevance=5, msg_id=1,
+                        summary=summary, channel_name="chan_a", timestamp=base_ts)
+    # two duplicates from one other channel + one from the representative's own channel
+    p2, a2 = make_pair(importance=3, msg_id=2,
+                        summary="Israeli airstrikes reported in Dahiyeh suburb Beirut",
+                        channel_name="chan_b", timestamp=base_ts + timedelta(minutes=10))
+    p3, a3 = make_pair(importance=3, msg_id=3,
+                        summary="Israeli airstrikes reported in the Dahiyeh suburb of Beirut",
+                        channel_name="chan_b", timestamp=base_ts + timedelta(minutes=20))
+    p4, a4 = make_pair(importance=3, msg_id=4,
+                        summary="Airstrikes by Israel reported in Dahiyeh Beirut suburb",
+                        channel_name="chan_a", timestamp=base_ts + timedelta(minutes=30))
+
+    config = TriageConfig(min_composite_score=0.0, corroboration_weight=0.15, corroboration_cap=1.5)
+    result = triage([(p1, a1), (p2, a2), (p3, a3), (p4, a4)], config)
+    kept = (result.main_items + result.appendix_items)[0]
+    assert len(kept.corroborations) == 3
+    expected = 5.0 * (1 + 0.15 * 1)  # chan_b counts once; own-channel dup not at all
+    assert abs(kept.composite_score - expected) < 0.01

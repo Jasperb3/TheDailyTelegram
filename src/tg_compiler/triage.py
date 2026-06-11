@@ -203,11 +203,14 @@ def triage(
     posts_clustered = len(scored) - len(kept)
 
     # Apply a multiplicative corroboration boost to representatives with corroborations,
-    # then re-sort since boosting can change relative ranking.
+    # then re-sort since boosting can change relative ranking. Only distinct *other*
+    # channels count — repeat posts from the representative's own channel are merged
+    # but are not independent confirmation, so they earn no boost.
     for item in kept:
-        if item.corroborations:
+        other_channels = {c.channel_slug for c in item.corroborations} - {item.post.channel_name}
+        if other_channels:
             boost = min(
-                1 + config.corroboration_weight * len(item.corroborations),
+                1 + config.corroboration_weight * len(other_channels),
                 config.corroboration_cap,
             )
             item.composite_score *= boost

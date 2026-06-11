@@ -197,3 +197,28 @@ def test_pdf_embeds_images_from_absolute_paths(tmp_path):
     n_images = sum(len(page.get_images()) for page in doc)
     doc.close()
     assert n_images >= 1
+
+def test_same_channel_corroborations_render_as_related_posts():
+    content = make_content(n_main=1, n_appendix=0)
+    content.main_items[0].corroborations = [
+        CorroborationRef(channel_slug="news", message_id=43,
+                         timestamp=datetime(2026, 6, 7, 15, 0, tzinfo=timezone.utc))
+    ]
+    content.channel_links = {"news": "news"}
+    md = render_markdown(content)
+    assert "**Corroborated by" not in md
+    assert "Related posts from this channel" in md
+    assert "https://t.me/news/43" in md
+
+
+def test_corroboration_count_uses_distinct_other_channels():
+    content = make_content(n_main=1, n_appendix=0)
+    ts = datetime(2026, 6, 7, 15, 0, tzinfo=timezone.utc)
+    content.main_items[0].corroborations = [
+        CorroborationRef(channel_slug="chan_b", message_id=1, timestamp=ts),
+        CorroborationRef(channel_slug="chan_b", message_id=2, timestamp=ts),
+        CorroborationRef(channel_slug="news", message_id=3, timestamp=ts),
+    ]
+    md = render_markdown(content)
+    assert "Corroborated by 1 other channel:" in md
+    assert "Related posts from this channel" in md

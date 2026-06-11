@@ -21,8 +21,14 @@
 
 **Entities:** {{ item.analysis.key_entities | clean_entities | join(', ') or '—' }}
 
-{% if item.corroborations %}
-**Corroborated by {{ item.corroborations|length }} other channel{{ 's' if item.corroborations|length != 1 else '' }}:** {% for c in item.corroborations %}{{ c.channel_slug }}{% set cu = content.channel_links.get(c.channel_slug, '') %}{% if cu %} ([↗](https://t.me/{{ cu }}/{{ c.message_id }})){% endif %}{{ ', ' if not loop.last }}{% endfor %}
+{% set cross = item.corroborations | selectattr('channel_slug', 'ne', item.post.channel_name) | list %}
+{% set same = item.corroborations | selectattr('channel_slug', 'eq', item.post.channel_name) | list %}
+{% if cross %}
+{% set n_channels = cross | map(attribute='channel_slug') | unique | list | length %}
+**Corroborated by {{ n_channels }} other channel{{ 's' if n_channels != 1 else '' }}:** {% for c in cross %}{{ c.channel_slug }}{% set cu = content.channel_links.get(c.channel_slug, '') %}{% if cu %} ([↗](https://t.me/{{ cu }}/{{ c.message_id }})){% endif %}{{ ', ' if not loop.last }}{% endfor %}
+{% endif %}
+{% if same %}
+**Related posts from this channel:** {% for c in same %}{% if username %}[↗ {{ c.timestamp.strftime('%H:%M') }}](https://t.me/{{ username }}/{{ c.message_id }}){% else %}{{ c.timestamp.strftime('%H:%M') }}{% endif %}{{ ', ' if not loop.last }}{% endfor %}
 {% endif %}
 
 {% if item.post.has_video %}

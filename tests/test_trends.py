@@ -98,3 +98,23 @@ def test_emerging_entities_capped_and_sorted_by_frequency():
     emerging = trends["emerging_entities"]
     assert len(emerging) == MAX_EMERGING_ENTITIES
     assert emerging[0] == "hotspot"
+
+def test_emerging_excludes_newswire_credits_and_numeric_designators():
+    history = [
+        _pair(1, 8, "Military", ["OldActor"]),
+        _pair(2, 9, "Military", ["AFP", "Tasnim", "100th Mechanized Brigade",
+                                 "2026 FIFA World Cup", "New Real Actor"]),
+    ]
+    trends = compute_trends(history, date(2026, 6, 9))
+    assert trends["emerging_entities"] == ["new real actor"]
+
+
+def test_trend_counting_filters_garbage_entities():
+    history = [
+        _pair(1, 8, "Military", ["OldActor"]),
+        _pair(2, 9, "Military", ["key_entities", "{json}", "Bahrain"]),
+    ]
+    trends = compute_trends(history, date(2026, 6, 9))
+    assert trends["emerging_entities"] == ["bahrain"]
+    entities = {d["entity"] for d in trends["entity_deltas"]}
+    assert "key_entities" not in entities
