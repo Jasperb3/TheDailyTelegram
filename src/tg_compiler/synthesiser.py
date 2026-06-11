@@ -291,11 +291,23 @@ def _md_to_pdf(md_text: str, date_str: str, date_dir: Path) -> Path:
 def _prepend_pdf(front_page_path: Path, briefing_path: Path) -> None:
     from pypdf import PdfWriter, PdfReader
 
+    front_reader = PdfReader(str(front_page_path))
+    briefing_reader = PdfReader(str(briefing_path))
+
+    skip = 0
+    existing_meta = briefing_reader.metadata or {}
+    if existing_meta.get("/IntelPages"):
+        try:
+            skip = int(existing_meta["/IntelPages"])
+        except ValueError:
+            skip = 0
+
     writer = PdfWriter()
-    for page in PdfReader(str(front_page_path)).pages:
+    for page in front_reader.pages:
         writer.add_page(page)
-    for page in PdfReader(str(briefing_path)).pages:
+    for page in briefing_reader.pages[skip:]:
         writer.add_page(page)
+    writer.add_metadata({"/IntelPages": str(len(front_reader.pages))})
 
     fd, tmp_path = tempfile.mkstemp(dir=briefing_path.parent, suffix=".tmp.pdf")
     os.close(fd)
@@ -322,42 +334,48 @@ async def run_analysis(config: AppConfig, target_date: date, main_items=None) ->
     briefing_path = pdfs[-1]
 
     db = Database(config.storage.db_path)
-    db.init_schema()
+    try:
+        db.init_schema()
 
-    if main_items is None:
-        from tg_compiler.triage import triage as do_triage
-        pairs = db.get_days_posts_with_analyses(date_str)
-        if not pairs:
+        if main_items is None:
+            from tg_compiler.triage import triage as do_triage
+            pairs = db.get_days_posts_with_analyses(date_str)
+            if not pairs:
+                log.error(
+                    "No analysed posts found for %s — cannot generate intelligence front page",
+                    date_str,
+                )
+                return
+            channel_priorities = {ch.slug: ch.priority for ch in config.telegram.channels}
+            channel_credibilities = {ch.slug: ch.credibility for ch in config.telegram.channels}
+            content = do_triage(pairs, config.triage, today=target_date,
+                                 channel_priorities=channel_priorities,
+                                 channel_credibilities=channel_credibilities)
+            posts = _triaged_to_dicts(content.main_items)
+        else:
+            posts = _triaged_to_dicts(main_items)
+
+        if not posts:
             log.error(
-                "No analysed posts found for %s — cannot generate intelligence front page",
+                "No posts to synthesise for %s — cannot generate intelligence front page",
                 date_str,
             )
             return
-        channel_priorities = {ch.slug: ch.priority for ch in config.telegram.channels}
-        content = do_triage(pairs, config.triage, today=target_date, channel_priorities=channel_priorities)
-        posts = _triaged_to_dicts(content.main_items)
-    else:
-        posts = _triaged_to_dicts(main_items)
 
-    if not posts:
-        log.error(
-            "No posts to synthesise for %s — cannot generate intelligence front page",
-            date_str,
-        )
-        return
+        history_start = (target_date - timedelta(days=TREND_WINDOW_DAYS - 1)).isoformat()
+        history = db.get_posts_with_analyses_in_range(history_start, date_str)
+        trends = compute_trends(history, target_date)
 
-    history_start = (target_date - timedelta(days=TREND_WINDOW_DAYS - 1)).isoformat()
-    history = db.get_posts_with_analyses_in_range(history_start, date_str)
-    trends = compute_trends(history, target_date)
+        previous_intel = db.get_intel_assessment((target_date - timedelta(days=1)).isoformat())
 
-    previous_intel = db.get_intel_assessment((target_date - timedelta(days=1)).isoformat())
+        log.info("Synthesising intelligence assessment from %d posts…", len(posts))
+        intel = await synthesise(config, posts, trends=trends, previous_intel=previous_intel)
+        if intel is None:
+            return
 
-    log.info("Synthesising intelligence assessment from %d posts…", len(posts))
-    intel = await synthesise(config, posts, trends=trends, previous_intel=previous_intel)
-    if intel is None:
-        return
-
-    db.save_intel_assessment(date_str, intel)
+        db.save_intel_assessment(date_str, intel)
+    finally:
+        db.close()
 
     channel_links = {
         ch.slug: ch.username.lstrip("@")

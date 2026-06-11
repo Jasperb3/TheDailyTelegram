@@ -11,6 +11,7 @@ from telethon.tl.types import Message
 
 from tg_compiler.config import AppConfig, ChannelConfig
 from tg_compiler.db import Database, PostRecord
+from tg_compiler.utils import secure_file
 
 log = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ class Scraper:
 
     async def __aenter__(self):
         await self._client.start()
+        secure_file(f"{self._cfg.telegram.session_name}.session")
         return self
 
     async def __aexit__(self, *_):

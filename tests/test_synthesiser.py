@@ -227,6 +227,28 @@ def test_prepend_pdf_merges_pages(tmp_path):
     assert len(result.pages) == 3  # 1 front + 2 briefing
 
 
+def test_prepend_pdf_idempotent_on_rerun(tmp_path):
+    from pypdf import PdfWriter, PdfReader
+
+    def make_pdf(path, n_pages=1):
+        writer = PdfWriter()
+        for _ in range(n_pages):
+            writer.add_blank_page(width=612, height=792)
+        with open(path, "wb") as f:
+            writer.write(f)
+
+    front = tmp_path / "front.pdf"
+    briefing = tmp_path / "briefing.pdf"
+    make_pdf(front, n_pages=1)
+    make_pdf(briefing, n_pages=2)
+
+    _prepend_pdf(front, briefing)
+    _prepend_pdf(front, briefing)
+
+    result = PdfReader(str(briefing))
+    assert len(result.pages) == 3  # 1 front + 2 briefing, not stacked twice
+
+
 def test_prepend_pdf_no_tmp_file_left(tmp_path):
     from pypdf import PdfWriter
 
@@ -325,6 +347,24 @@ def test_triaged_to_dicts_missing_title_defaults_empty():
 # ---------------------------------------------------------------------------
 # run_analysis signature
 # ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_run_analysis_no_briefing_returns_without_error(tmp_path, caplog):
+    import logging
+    from datetime import date
+    from tg_compiler.synthesiser import run_analysis
+    from tg_compiler.config import AppConfig
+
+    cfg = AppConfig.model_validate({
+        "telegram": {"api_id": 1, "api_hash": "x", "channels": []},
+        "lmstudio": {"model": "test"},
+        "generation": {"output_dir": str(tmp_path)},
+    })
+    with caplog.at_level(logging.ERROR):
+        await run_analysis(cfg, date(2026, 6, 9))
+
+    assert any("Run --batch first" in r.message for r in caplog.records)
+
 
 @pytest.mark.asyncio
 async def test_run_analysis_accepts_main_items_kwarg():

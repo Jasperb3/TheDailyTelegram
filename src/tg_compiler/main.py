@@ -4,23 +4,20 @@ import asyncio
 import logging
 import os
 import shutil
-from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
-from jinja2 import Environment, FileSystemLoader
 
 load_dotenv()
 
 from tg_compiler.config import load_config, AppConfig, ChannelConfig
 from tg_compiler.db import Database, PostRecord
 from tg_compiler.scraper import Scraper
+from tg_compiler.utils import secure_file
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-
-TEMPLATES_DIR = Path(__file__).parent.parent.parent / "templates"
 
 
 async def generate_daily_briefing(
@@ -36,7 +33,10 @@ async def generate_daily_briefing(
 
     pairs = db.get_days_posts_with_analyses(target_date.isoformat())
     channel_priorities = {ch.slug: ch.priority for ch in config.telegram.channels}
-    content = do_triage(pairs, config.triage, today=target_date, channel_priorities=channel_priorities)
+    channel_credibilities = {ch.slug: ch.credibility for ch in config.telegram.channels}
+    content = do_triage(pairs, config.triage, today=target_date,
+                         channel_priorities=channel_priorities,
+                         channel_credibilities=channel_credibilities)
     content.channel_links = {
         ch.slug: ch.username.lstrip("@")
         for ch in config.telegram.channels
@@ -119,8 +119,11 @@ async def schedule_daily_generation(config: AppConfig) -> None:
 
         today = datetime.now(timezone.utc).date()
         db = Database(config.storage.db_path)
-        db.init_schema()
-        _, content = await generate_daily_briefing(config, today, db)
+        try:
+            db.init_schema()
+            _, content = await generate_daily_briefing(config, today, db)
+        finally:
+            db.close()
         await run_analysis(config, today, main_items=content.main_items)
 
         removed = purge_old_media(config.storage.media_dir, config.storage.retention_days)
@@ -142,6 +145,7 @@ async def run_daemon(config: AppConfig) -> None:
         config.telegram.api_hash,
     )
     await client.start()
+    secure_file(f"{config.telegram.session_name}.session")
     try:
         channel_entities = []
         channel_cfg_by_id: dict[int, ChannelConfig] = {}

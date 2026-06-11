@@ -4,6 +4,8 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from tg_compiler.utils import secure_file
+
 
 @dataclass
 class PostRecord:
@@ -40,6 +42,18 @@ class Database:
     def __init__(self, db_path: str):
         self._conn = sqlite3.connect(db_path, detect_types=sqlite3.PARSE_DECLTYPES)
         self._conn.row_factory = sqlite3.Row
+        self._conn.execute("PRAGMA foreign_keys = ON")
+        if db_path != ":memory:":
+            secure_file(db_path)
+
+    def close(self) -> None:
+        self._conn.close()
+
+    def __enter__(self) -> "Database":
+        return self
+
+    def __exit__(self, *_) -> None:
+        self.close()
 
     def init_schema(self) -> None:
         self._conn.executescript("""
@@ -82,6 +96,8 @@ class Database:
                 intel_json TEXT NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE INDEX IF NOT EXISTS idx_analyses_post_id ON analyses(post_id);
+            CREATE INDEX IF NOT EXISTS idx_posts_timestamp ON posts(timestamp);
         """)
         self._conn.commit()
         existing = {

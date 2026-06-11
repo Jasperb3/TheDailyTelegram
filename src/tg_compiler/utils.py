@@ -1,5 +1,6 @@
 from __future__ import annotations
 import html
+import os
 import re
 
 
@@ -8,6 +9,14 @@ def escape_html(text: str) -> str:
     if not text:
         return text
     return html.escape(text, quote=False)
+
+
+def secure_file(path: str) -> None:
+    """Restrict a sensitive file to owner read/write only, if it exists."""
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
 
 _ENTITY_GARBAGE = re.compile(
     r'[`{}<>\[\]]|json|PostAnalysis|importance_score|urgency_score'

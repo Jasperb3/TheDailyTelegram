@@ -91,6 +91,8 @@ def _find_duplicate(
     entity_cluster_window_secs: float = 86400,
     threshold: float = 0.28,
     summary_window_secs: float | None = None,
+    entity_overlap_count: int = 3,
+    entity_cluster_overlap_count: int = 4,
 ) -> TriagedPost | None:
     if summary_window_secs is None:
         summary_window_secs = time_window_secs
@@ -107,14 +109,15 @@ def _find_duplicate(
                     return existing
         if delta > time_window_secs:
             continue
-        # Entity overlap: ≥3 shared named entities within time window
+        # Entity overlap: ≥entity_overlap_count shared named entities within time window
         cand_entities = {_normalize_entity(e) for e in candidate.analysis.key_entities}
         exist_entities = {_normalize_entity(e) for e in existing.analysis.key_entities}
-        if len(cand_entities) >= 3 and len(exist_entities) >= 3:
-            if len(cand_entities & exist_entities) >= 3:
+        if len(cand_entities) >= entity_overlap_count and len(exist_entities) >= entity_overlap_count:
+            if len(cand_entities & exist_entities) >= entity_overlap_count:
                 return existing
 
-    # Extended entity-cluster pass: ≥4 shared entities within the cluster window (default 24h)
+    # Extended entity-cluster pass: ≥entity_cluster_overlap_count shared entities within
+    # the cluster window (default 24h)
     for existing in kept:
         delta = abs(
             (candidate.post.timestamp - existing.post.timestamp).total_seconds()
@@ -123,8 +126,8 @@ def _find_duplicate(
             continue
         cand_entities = {_normalize_entity(e) for e in candidate.analysis.key_entities}
         exist_entities = {_normalize_entity(e) for e in existing.analysis.key_entities}
-        if len(cand_entities) >= 4 and len(exist_entities) >= 4:
-            if len(cand_entities & exist_entities) >= 4:
+        if len(cand_entities) >= entity_cluster_overlap_count and len(exist_entities) >= entity_cluster_overlap_count:
+            if len(cand_entities & exist_entities) >= entity_cluster_overlap_count:
                 return existing
 
     return None
@@ -135,6 +138,7 @@ def triage(
     config: TriageConfig,
     today: date | None = None,
     channel_priorities: dict[str, float] | None = None,
+    channel_credibilities: dict[str, float] | None = None,
 ) -> BriefingContent:
     today = today or date.today()
     now = datetime.now(timezone.utc)
@@ -149,13 +153,16 @@ def triage(
                     analysis.credibility_score, analysis.relevance_score]):
             continue
         priority = (channel_priorities or {}).get(post.channel_name, 1.0)
-        score = _composite(analysis) * priority
+        credibility = (channel_credibilities or {}).get(post.channel_name, 1.0)
+        score = _composite(analysis) * priority * credibility
         text_lower = (post.text or "").lower()
         for kw in config.keywords:
             if kw.lower() in text_lower:
                 score = min(5.0, score + config.keyword_boost)
                 break
         score = min(5.0, score)
+        if analysis.category == "Rumor":
+            score *= config.rumor_penalty
         score *= _recency_multiplier(post.timestamp, now, config.recency_half_life_hours, config.recency_floor)
         scored.append(TriagedPost(post=post, analysis=analysis, composite_score=score))
 
@@ -174,7 +181,10 @@ def triage(
     for item in scored:
         match = _find_duplicate(item, kept, time_window_secs=config.dedup_window_secs,
                                  entity_cluster_window_secs=config.entity_cluster_window_secs,
-                                 summary_window_secs=config.dedup_summary_window_secs)
+                                 threshold=config.dedup_jaccard_threshold,
+                                 summary_window_secs=config.dedup_summary_window_secs,
+                                 entity_overlap_count=config.dedup_entity_overlap_count,
+                                 entity_cluster_overlap_count=config.dedup_entity_cluster_overlap_count)
         if match is not None:
             match.corroborations.append(CorroborationRef(
                 channel_slug=item.post.channel_name,

@@ -9,6 +9,7 @@ class ChannelConfig(BaseModel):
     username: str | None = None
     id: int | None = None
     priority: float = 1.0          # multiplier applied to composite score (0.1–2.0)
+    credibility: float = 1.0       # channel credibility prior, multiplier applied to composite score (0.1–2.0)
     custom_prompt: str | None = None  # override the default LLM system prompt for this channel
 
 
@@ -43,6 +44,10 @@ class TriageConfig(BaseModel):
     recency_floor: float = 0.6          # minimum recency multiplier, however old the post
     corroboration_weight: float = 0.15  # composite-score multiplier per corroborating channel
     corroboration_cap: float = 1.5      # max multiplier from corroboration boost
+    rumor_penalty: float = 0.7          # composite-score multiplier applied to category == "Rumor"
+    dedup_jaccard_threshold: float = 0.28           # min word-overlap ratio for summary/title dedup
+    dedup_entity_overlap_count: int = 3             # shared entities required within dedup_window_secs
+    dedup_entity_cluster_overlap_count: int = 4     # shared entities required within entity_cluster_window_secs
 
 
 class GenerationConfig(BaseModel):

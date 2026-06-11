@@ -1,6 +1,62 @@
+from datetime import datetime, timezone
+
 import pytest
 from tg_compiler.config import AppConfig, TelegramConfig, LMStudioConfig, ChannelConfig
 from tg_compiler import main as main_module
+from tg_compiler.main import _parse_since, purge_old_media
+
+
+# ---------------------------------------------------------------------------
+# _parse_since
+# ---------------------------------------------------------------------------
+
+def test_parse_since_time_of_day_today():
+    result = _parse_since("00:00")
+    now = datetime.now(timezone.utc)
+    assert (result.year, result.month, result.day) == (now.year, now.month, now.day)
+    assert result.hour == 0
+    assert result.minute == 0
+    assert result.tzinfo == timezone.utc
+
+
+def test_parse_since_date_only():
+    result = _parse_since("2026-06-01")
+    assert result == datetime(2026, 6, 1, 0, 0, tzinfo=timezone.utc)
+
+
+def test_parse_since_date_and_time():
+    result = _parse_since("2026-06-01T08:30")
+    assert result == datetime(2026, 6, 1, 8, 30, tzinfo=timezone.utc)
+
+
+def test_parse_since_invalid_raises_system_exit():
+    with pytest.raises(SystemExit):
+        _parse_since("not-a-date")
+
+
+# ---------------------------------------------------------------------------
+# purge_old_media
+# ---------------------------------------------------------------------------
+
+def test_purge_old_media_removes_old_dirs(tmp_path):
+    old_dir = tmp_path / "chan" / "2020-01-01"
+    new_dir = tmp_path / "chan" / "2099-01-01"
+    other_dir = tmp_path / "chan" / "not-a-date"
+    old_dir.mkdir(parents=True)
+    new_dir.mkdir(parents=True)
+    other_dir.mkdir(parents=True)
+
+    removed = purge_old_media(str(tmp_path), retention_days=30)
+
+    assert removed == 1
+    assert not old_dir.exists()
+    assert new_dir.exists()
+    assert other_dir.exists()
+
+
+def test_purge_old_media_missing_base_dir_returns_zero(tmp_path):
+    missing = tmp_path / "does-not-exist"
+    assert purge_old_media(str(missing), retention_days=30) == 0
 
 
 @pytest.fixture
