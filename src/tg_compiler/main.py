@@ -23,7 +23,14 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 TEMPLATES_DIR = Path(__file__).parent.parent.parent / "templates"
 
 
-async def generate_daily_briefing(config: AppConfig, target_date: date, db: Database) -> tuple[str, "BriefingContent"]:
+async def generate_daily_briefing(
+    config: AppConfig,
+    target_date: date,
+    db: Database,
+    posts_scraped: int = 0,
+    posts_analysed: int = 0,
+    posts_skipped: int = 0,
+) -> tuple[str, "BriefingContent"]:
     from tg_compiler.triage import triage as do_triage, BriefingContent
     from tg_compiler.generator import generate_briefing
 
@@ -35,6 +42,9 @@ async def generate_daily_briefing(config: AppConfig, target_date: date, db: Data
         for ch in config.telegram.channels
         if ch.username
     }
+    content.posts_scraped = posts_scraped
+    content.posts_analysed = posts_analysed
+    content.posts_skipped = posts_skipped
     path = generate_briefing(content, config.generation.output_dir, pdf=True)
     log.info("Briefing generated: %s", path)
     return path, content
@@ -48,6 +58,7 @@ async def run_batch(config: AppConfig) -> None:
     db.init_schema()
     today = datetime.now(timezone.utc).date()
 
+    total_scraped = 0
     from tqdm import tqdm
     from tqdm.contrib.logging import logging_redirect_tqdm
     async with Scraper(config, db) as scraper:
@@ -56,15 +67,19 @@ async def run_batch(config: AppConfig) -> None:
                 try:
                     posts = await scraper.scrape_channel(channel_cfg)
                     log.info("Scraped %d new posts from %s", len(posts), channel_cfg.slug)
+                    total_scraped += len(posts)
                 except Exception as e:
                     log.error("Scraping channel %s failed: %s", channel_cfg.slug, e)
         channel_map = scraper.channel_map
 
     analyzer = Analyzer(config, db)
-    count = await analyzer.process_unanalysed(channel_map)
-    log.info("Analysed %d posts", count)
+    analysed_count, skipped_count = await analyzer.process_unanalysed(channel_map)
+    log.info("Analysed %d posts (skipped %d)", analysed_count, skipped_count)
 
-    _, content = await generate_daily_briefing(config, today, db)
+    _, content = await generate_daily_briefing(
+        config, today, db,
+        posts_scraped=total_scraped, posts_analysed=analysed_count, posts_skipped=skipped_count,
+    )
     await run_analysis(config, today, main_items=content.main_items)
 
 

@@ -24,6 +24,10 @@
 
 **Entities:** {{ item.analysis.key_entities | clean_entities | join(', ') or '—' }}
 
+{% if item.corroborations %}
+**Corroborated by {{ item.corroborations|length }} other channel{{ 's' if item.corroborations|length != 1 else '' }}:** {% for c in item.corroborations %}{{ c.channel_slug }}{% set cu = content.channel_links.get(c.channel_slug, '') %}{% if cu %} ([↗](https://t.me/{{ cu }}/{{ c.message_id }})){% endif %}{{ ', ' if not loop.last }}{% endfor %}
+{% endif %}
+
 {% if item.post.has_video %}
 **Video:** {% if item.analysis.image_insights %}{{ item.analysis.image_insights }} {% endif %}_[▶ Watch on Telegram](https://t.me/{{ username }}/{{ item.post.message_id }})_
 {% elif item.analysis.image_insights %}
@@ -70,3 +74,9 @@ _No posts above threshold for this channel._
 {%- for cat, count in content.category_counts | dictsort(by='value', reverse=true) %}
 | {{ cat }} | {{ count }} |
 {%- endfor %}
+{%- if content.posts_scraped %}
+| Scraped | {{ content.posts_scraped }} |
+| Analysed | {{ content.posts_analysed }} |
+| Skipped (low-content) | {{ content.posts_skipped }} |
+| Duplicates merged | {{ content.posts_clustered }} |
+{%- endif %}

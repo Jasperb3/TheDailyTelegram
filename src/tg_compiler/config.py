@@ -41,6 +41,8 @@ class TriageConfig(BaseModel):
     entity_cluster_window_secs: int = 86400  # wider window for entity-cluster dedup (24h)
     recency_half_life_hours: float = 12.0  # composite score halves every this many hours of post age
     recency_floor: float = 0.6          # minimum recency multiplier, however old the post
+    corroboration_weight: float = 0.15  # composite-score multiplier per corroborating channel
+    corroboration_cap: float = 1.5      # max multiplier from corroboration boost
 
 
 class GenerationConfig(BaseModel):

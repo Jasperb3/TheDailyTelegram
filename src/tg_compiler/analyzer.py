@@ -307,12 +307,13 @@ class Analyzer:
 
     async def process_unanalysed(
         self, channel_map: dict[int, ChannelConfig] | None = None
-    ) -> int:
+    ) -> tuple[int, int]:
         posts = self._db.get_unanalysed_posts()
         if not posts:
-            return 0
+            return 0, 0
 
         sem = asyncio.Semaphore(self._cfg.lmstudio.max_concurrent_analyses)
+        skipped = 0
 
         from tqdm import tqdm
         from tqdm.contrib.logging import logging_redirect_tqdm
@@ -320,6 +321,7 @@ class Analyzer:
         bar = tqdm(total=len(posts), desc="Analysing posts", unit="post")
 
         async def _analyse_and_save(post: PostRecord) -> None:
+            nonlocal skipped
             if len(post.text.strip()) < MIN_CONTENT_CHARS and not post.media_paths:
                 self._db.insert_analysis(AnalysisRecord(
                     post_id=post.id,
@@ -332,6 +334,7 @@ class Analyzer:
                     key_entities=[],
                     model_used=self._cfg.lmstudio.model,
                 ))
+                skipped += 1
                 bar.update(1)
                 return
             channel_cfg = channel_map.get(post.channel_id) if channel_map else None
@@ -345,4 +348,4 @@ class Analyzer:
                 await asyncio.gather(*(_analyse_and_save(p) for p in posts))
             finally:
                 bar.close()
-        return len(posts)
+        return len(posts) - skipped, skipped

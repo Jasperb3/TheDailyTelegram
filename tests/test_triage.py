@@ -1,6 +1,6 @@
 from datetime import datetime, date, timezone, timedelta
 from tg_compiler.db import PostRecord, AnalysisRecord
-from tg_compiler.triage import triage, TriagedPost, BriefingContent, _jaccard
+from tg_compiler.triage import triage, TriagedPost, BriefingContent, _jaccard, CorroborationRef
 from tg_compiler.config import TriageConfig
 
 
@@ -354,3 +354,90 @@ def test_executive_items_includes_all_critical_regardless_of_score():
     result = triage(pairs, config)
     assert len(result.executive_items) == 10
     assert any(t.post.message_id == 99 for t in result.executive_items)
+
+
+def test_entity_alias_normalization_clusters_duplicates():
+    # Same 3 entities under different naming conventions, distinct summaries
+    # so only the alias-aware entity-overlap leg can trigger the match.
+    base_ts = datetime.now(timezone.utc)
+    p1, a1 = make_pair(msg_id=1, importance=5,
+                        summary="Forces mass near the northern frontier overnight",
+                        timestamp=base_ts)
+    a1.key_entities = ["U.S.", "Israel", "Hezbollah"]
+    p2, a2 = make_pair(msg_id=2, importance=3,
+                        summary="Officials describe a tense standoff at the border crossing",
+                        timestamp=base_ts + timedelta(minutes=30))
+    a2.key_entities = ["United States", "Israel", "Hezbollah"]
+
+    config = TriageConfig(min_composite_score=0.0)
+    result = triage([(p1, a1), (p2, a2)], config)
+    total = len(result.main_items) + len(result.appendix_items)
+    assert total == 1
+    kept = (result.main_items + result.appendix_items)[0]
+    assert kept.post.message_id == 1
+    assert len(kept.corroborations) == 1
+    assert kept.corroborations[0].channel_slug == p2.channel_name
+
+
+def test_corroboration_recorded_and_score_boosted():
+    base_ts = datetime.now(timezone.utc)
+    summary = "Israeli airstrikes were reported in the Dahiyeh suburb of Beirut Lebanon"
+    p1, a1 = make_pair(importance=5, urgency=5, credibility=5, relevance=5, msg_id=1,
+                        summary=summary, channel_name="chan_a", timestamp=base_ts)
+    p2, a2 = make_pair(importance=3, msg_id=2,
+                        summary="Israeli airstrikes reported in Dahiyeh suburb Beirut",
+                        channel_name="chan_b", timestamp=base_ts + timedelta(minutes=30))
+
+    config = TriageConfig(min_composite_score=0.0, corroboration_weight=0.15, corroboration_cap=1.5)
+    result = triage([(p1, a1), (p2, a2)], config)
+    kept = (result.main_items + result.appendix_items)[0]
+    assert kept.post.message_id == 1
+    assert len(kept.corroborations) == 1
+    assert kept.corroborations[0].channel_slug == "chan_b"
+    assert kept.corroborations[0].message_id == 2
+
+    base_score = 0.4 * 5 + 0.3 * 5 + 0.2 * 5 + 0.1 * 5  # 5.0, capped before boost
+    expected = base_score * (1 + 0.15 * 1)
+    assert abs(kept.composite_score - expected) < 0.01
+
+
+def test_corroboration_boost_capped():
+    base_ts = datetime.now(timezone.utc)
+    summary = "Israeli airstrikes were reported in the Dahiyeh suburb of Beirut Lebanon"
+    p1, a1 = make_pair(importance=5, urgency=5, credibility=5, relevance=5, msg_id=1,
+                        summary=summary, timestamp=base_ts)
+
+    pairs = [(p1, a1)]
+    for i in range(2, 7):  # 5 corroborating duplicates
+        p, a = make_pair(importance=2, msg_id=i,
+                          summary="Israeli airstrikes reported in Dahiyeh suburb Beirut",
+                          channel_name=f"chan_{i}",
+                          timestamp=base_ts + timedelta(minutes=10 * i))
+        pairs.append((p, a))
+
+    config = TriageConfig(min_composite_score=0.0, corroboration_weight=0.15, corroboration_cap=1.5)
+    result = triage(pairs, config)
+    total = len(result.main_items) + len(result.appendix_items)
+    assert total == 1
+    kept = (result.main_items + result.appendix_items)[0]
+    assert len(kept.corroborations) == 5
+
+    base_score = 0.4 * 5 + 0.3 * 5 + 0.2 * 5 + 0.1 * 5
+    expected = base_score * 1.5  # capped at corroboration_cap
+    assert abs(kept.composite_score - expected) < 0.01
+
+
+def test_posts_clustered_count():
+    base_ts = datetime.now(timezone.utc)
+    summary = "Israeli airstrikes were reported in the Dahiyeh suburb of Beirut Lebanon"
+    p1, a1 = make_pair(msg_id=1, importance=5, summary=summary, timestamp=base_ts)
+    p2, a2 = make_pair(msg_id=2, importance=3,
+                        summary="Israeli airstrikes reported in Dahiyeh suburb Beirut",
+                        timestamp=base_ts + timedelta(minutes=30))
+    p3, a3 = make_pair(msg_id=3,
+                        summary="Ceasefire negotiations resumed in Qatar between warring parties",
+                        timestamp=base_ts + timedelta(minutes=45))
+
+    config = TriageConfig(min_composite_score=0.0)
+    result = triage([(p1, a1), (p2, a2), (p3, a3)], config)
+    assert result.posts_clustered == 1

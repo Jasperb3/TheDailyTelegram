@@ -44,9 +44,9 @@ async def test_run_batch_continues_after_one_channel_fails(tmp_path, batch_confi
             pass
 
         async def process_unanalysed(self, channel_map=None):
-            return 0
+            return 0, 0
 
-    async def fake_generate_daily_briefing(config, today, db):
+    async def fake_generate_daily_briefing(config, today, db, **kwargs):
         from tg_compiler.triage import BriefingContent
         return "fake.pdf", BriefingContent(date=today, main_items=[], appendix_items=[])
 

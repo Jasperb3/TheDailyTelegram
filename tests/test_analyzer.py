@@ -188,8 +188,9 @@ async def test_process_unanalysed_skips_short_textonly_post(db, app_config, monk
 
     monkeypatch.setattr(analyzer, "analyze_post", fake_analyze_post)
 
-    count = await analyzer.process_unanalysed()
-    assert count == 2
+    analysed_count, skipped_count = await analyzer.process_unanalysed()
+    assert analysed_count == 1
+    assert skipped_count == 1
 
     pairs = db.get_days_posts_with_analyses("2026-06-07")
     by_id = {p.message_id: a for p, a in pairs}

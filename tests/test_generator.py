@@ -1,6 +1,6 @@
 from datetime import date, datetime, timezone
 from tg_compiler.db import PostRecord, AnalysisRecord
-from tg_compiler.triage import TriagedPost, BriefingContent
+from tg_compiler.triage import TriagedPost, BriefingContent, CorroborationRef
 from tg_compiler.generator import render_markdown
 
 
@@ -106,3 +106,37 @@ def test_purge_removes_old_directories(tmp_path):
 
 def test_purge_nonexistent_dir_returns_zero():
     assert purge_old_media("/nonexistent/path/abc123", retention_days=30) == 0
+
+
+def test_corroboration_line_rendered_when_present():
+    content = make_content(n_main=1, n_appendix=0)
+    content.main_items[0].corroborations = [
+        CorroborationRef(channel_slug="other_chan", message_id=42, timestamp=datetime(2026, 6, 7, 14, 0, tzinfo=timezone.utc))
+    ]
+    content.channel_links = {"other_chan": "other_chan"}
+    md = render_markdown(content)
+    assert "Corroborated by 1 other channel" in md
+    assert "other_chan" in md
+
+
+def test_corroboration_line_absent_when_none():
+    md = render_markdown(make_content(n_main=1, n_appendix=0))
+    assert "Corroborated by" not in md
+
+
+def test_pipeline_stats_rendered_when_scraped_set():
+    content = make_content(n_main=1, n_appendix=0)
+    content.posts_scraped = 100
+    content.posts_analysed = 90
+    content.posts_skipped = 10
+    content.posts_clustered = 5
+    md = render_markdown(content)
+    assert "| Scraped | 100 |" in md
+    assert "| Analysed | 90 |" in md
+    assert "| Skipped (low-content) | 10 |" in md
+    assert "| Duplicates merged | 5 |" in md
+
+
+def test_pipeline_stats_absent_when_not_set():
+    md = render_markdown(make_content(n_main=1, n_appendix=0))
+    assert "Scraped" not in md
