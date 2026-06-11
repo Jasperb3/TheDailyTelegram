@@ -236,6 +236,7 @@ class Analyzer:
                 base_url=f"http://{cfg.server_host}:{cfg.server_port}/v1",
                 api_key=api_key,
                 timeout=120,
+                max_retries=0,  # analyze_post has its own retry loop; SDK retries would multiply it
             )
         return self._client
 
@@ -292,18 +293,30 @@ class Analyzer:
             except Exception as e:
                 if attempt == 2:
                     log.warning(
-                        "Analysis failed for post %s after 3 attempts, using fallback: %s",
+                        "Analysis failed for post %s after 3 attempts, trying plain-text fallback: %s",
                         post.message_id, e,
                     )
-                    try:
-                        result = await asyncio.to_thread(self._call_llm, messages, False)
-                        if isinstance(result, PostAnalysis):
-                            return _sanitize(result)
-                        return _sanitize(parse_analysis_fallback(result if isinstance(result, str) else ""))
-                    except Exception as fe:
-                        log.error("Fallback also failed for post %s: %s", post.message_id, fe)
-                        return _sanitize(parse_analysis_fallback(""))
+                    # Last resort: plain-text call. If this also fails, propagate —
+                    # writing a fabricated empty analysis would permanently mark the
+                    # post as analysed and it would never be retried.
+                    result = await asyncio.to_thread(self._call_llm, messages, False)
+                    if isinstance(result, PostAnalysis):
+                        return _sanitize(result)
+                    return _sanitize(parse_analysis_fallback(result if isinstance(result, str) else ""))
                 await asyncio.sleep(10 * (attempt + 1))
+
+    def _server_reachable(self) -> bool:
+        """Quick preflight probe so a dead LM Studio aborts in seconds, not hours."""
+        try:
+            self._get_client().with_options(timeout=10).models.list()
+            return True
+        except Exception as e:
+            cfg = self._cfg.lmstudio
+            log.error(
+                "LM Studio unreachable at %s:%s — %s",
+                cfg.server_host, cfg.server_port, e,
+            )
+            return False
 
     async def process_unanalysed(
         self, channel_map: dict[int, ChannelConfig] | None = None
@@ -312,8 +325,13 @@ class Analyzer:
         if not posts:
             return 0, 0
 
+        if not await asyncio.to_thread(self._server_reachable):
+            log.error("Aborting analysis — %d posts remain queued for the next run", len(posts))
+            return 0, 0
+
         sem = asyncio.Semaphore(self._cfg.lmstudio.max_concurrent_analyses)
         skipped = 0
+        failed = 0
 
         from tqdm import tqdm
         from tqdm.contrib.logging import logging_redirect_tqdm
@@ -321,7 +339,7 @@ class Analyzer:
         bar = tqdm(total=len(posts), desc="Analysing posts", unit="post")
 
         async def _analyse_and_save(post: PostRecord) -> None:
-            nonlocal skipped
+            nonlocal skipped, failed
             if len(post.text.strip()) < MIN_CONTENT_CHARS and not post.media_paths:
                 self._db.insert_analysis(AnalysisRecord(
                     post_id=post.id,
@@ -338,8 +356,17 @@ class Analyzer:
                 bar.update(1)
                 return
             channel_cfg = channel_map.get(post.channel_id) if channel_map else None
-            async with sem:
-                analysis = await self.analyze_post(post, channel_cfg)
+            try:
+                async with sem:
+                    analysis = await self.analyze_post(post, channel_cfg)
+            except Exception as e:
+                log.error(
+                    "Analysis failed for post %s — left unanalysed for the next run: %s",
+                    post.message_id, e,
+                )
+                failed += 1
+                bar.update(1)
+                return
             self._db.insert_analysis(analysis_to_record(post.id, analysis, self._cfg.lmstudio.model))
             bar.update(1)
 
@@ -348,4 +375,6 @@ class Analyzer:
                 await asyncio.gather(*(_analyse_and_save(p) for p in posts))
             finally:
                 bar.close()
-        return len(posts) - skipped, skipped
+        if failed:
+            log.warning("%d posts failed analysis and remain queued for the next run", failed)
+        return len(posts) - skipped - failed, skipped

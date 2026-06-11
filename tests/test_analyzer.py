@@ -182,6 +182,7 @@ async def test_process_unanalysed_skips_short_textonly_post(db, app_config, monk
     db.insert_post(long_post)
 
     analyzer = Analyzer(app_config, db)
+    monkeypatch.setattr(analyzer, "_server_reachable", lambda: True)
 
     async def fake_analyze_post(post, channel_cfg=None):
         return _analysis(summary="Real analysis output for a long post.")
@@ -223,3 +224,54 @@ def test_sanitize_escapes_image_description():
     pa = _analysis(image_description="A photo shows troops & vehicles moving near the border.")
     result = _sanitize(pa)
     assert "&amp;" in result.image_description
+
+
+async def test_process_unanalysed_aborts_when_server_unreachable(db, app_config, monkeypatch):
+    from tg_compiler.analyzer import Analyzer
+    from tg_compiler.db import PostRecord
+    from datetime import datetime, timezone
+
+    post = PostRecord(
+        channel_id=1, channel_name="chan", message_id=1,
+        timestamp=datetime(2026, 6, 7, tzinfo=timezone.utc),
+        text="x" * 50, media_paths=[], has_images=False, raw_json="{}",
+    )
+    db.insert_post(post)
+
+    analyzer = Analyzer(app_config, db)
+    monkeypatch.setattr(analyzer, "_server_reachable", lambda: False)
+
+    called = []
+    monkeypatch.setattr(analyzer, "analyze_post", lambda *a, **k: called.append(1))
+
+    analysed_count, skipped_count = await analyzer.process_unanalysed()
+    assert (analysed_count, skipped_count) == (0, 0)
+    assert called == []
+    # post must remain queued — no sentinel or garbage analysis written
+    assert len(db.get_unanalysed_posts()) == 1
+
+
+async def test_process_unanalysed_leaves_post_queued_on_analysis_failure(db, app_config, monkeypatch):
+    from tg_compiler.analyzer import Analyzer
+    from tg_compiler.db import PostRecord
+    from datetime import datetime, timezone
+
+    post = PostRecord(
+        channel_id=1, channel_name="chan", message_id=7,
+        timestamp=datetime(2026, 6, 7, tzinfo=timezone.utc),
+        text="x" * 50, media_paths=[], has_images=False, raw_json="{}",
+    )
+    db.insert_post(post)
+
+    analyzer = Analyzer(app_config, db)
+    monkeypatch.setattr(analyzer, "_server_reachable", lambda: True)
+
+    async def failing_analyze_post(post, channel_cfg=None):
+        raise ConnectionError("LM Studio died mid-run")
+
+    monkeypatch.setattr(analyzer, "analyze_post", failing_analyze_post)
+
+    analysed_count, skipped_count = await analyzer.process_unanalysed()
+    assert (analysed_count, skipped_count) == (0, 0)
+    # the failed post stays unanalysed so the next run retries it
+    assert len(db.get_unanalysed_posts()) == 1
