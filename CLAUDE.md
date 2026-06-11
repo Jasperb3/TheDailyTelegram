@@ -89,8 +89,8 @@ Telegram (Telethon) → scraper.py → db.py ← analyzer.py (LM Studio) → tri
 ## Testing notes
 
 - DB tests use `":memory:"` SQLite — the `db` fixture in `conftest.py` initialises schema fresh per test.
-- `scraper.py` has no integration tests for the Telethon layer (requires live credentials). Only `media_path_for()` is unit-tested.
-- `analyzer.py` tests construct `PostAnalysis` and message payloads locally (no LM Studio server needed). `Analyzer` and `Scraper` are not mocked — integration tests require live services.
+- `scraper.py` has no live-Telethon integration tests (requires credentials); `media_path_for()` is unit-tested and `scrape_channel`'s error-isolation / uncapped-iteration behaviour is covered with a monkeypatched client.
+- `analyzer.py` tests construct `PostAnalysis` and message payloads locally (no LM Studio server needed). Full end-to-end runs against live Telegram/LM Studio are not covered by the suite.
 - `asyncio_mode = "auto"` in `pyproject.toml` — async test functions work without decorators.
 - 151 tests across 10 files; all pass with `pytest`.
 

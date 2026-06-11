@@ -12,12 +12,16 @@ Telegram channels
    analyzer.py  ←  LM Studio VLM
    (title, scores, category, threat_level, key entities)
                       ↓
-     triage.py  (composite score × channel priority, keyword boost, dedup, main/appendix split)
+     triage.py  (composite score × channel priority × credibility, keyword boost, rumour
+                 penalty, recency decay, story clustering with corroboration boost,
+                 main/appendix split)
                       ↓
    generator.py  →  briefings/YYYY-MM-DD/TheDailyTelegram_YYYY-MM-DD_HHMMSS.pdf
                       ↓
   synthesiser.py  ←  LM Studio (intelligence synthesis)
-   (top N posts → situation summary, key themes, signals & warnings, named actors)
+   (triaged main items + 7-day mention trends + yesterday's themes →
+    situation summary, key themes with citations & continuity, signals & warnings,
+    named actors, emerging actors)
                       ↓
    prepends intelligence front page to briefing PDF
 ```
@@ -106,6 +110,7 @@ telegram:
     - username: "@channelname"   # public @username, or use id: 123456789 for private channels
       slug: "news"               # short label used in file paths and briefing headings
       priority: 1.0              # composite score multiplier (0.1–2.0); higher = ranked more prominently
+      credibility: 1.0           # channel credibility prior (0.1–2.0), also multiplied into the score
       # custom_prompt: |         # optional: override the LLM system prompt for this channel only
       #   You are an analyst specialised in...
     - username: "@another_channel"
@@ -129,14 +134,23 @@ triage:
   keyword_boost: 0.5        # score added when a keyword matches (total capped at 5.0)
   min_composite_score: 3.5  # posts below this go to the Appendix section
   max_main_items: 50        # hard cap on main briefing length (overflow → appendix)
-  dedup_window_secs: 7200   # time window for cross-channel story deduplication (default: 2h)
+  dedup_window_secs: 7200   # time window for entity-overlap deduplication (default: 2h)
+  dedup_summary_window_secs: 21600   # window for summary/title word-overlap dedup (default: 6h)
   entity_cluster_window_secs: 86400  # wider dedup window for entity-cluster matching (default: 24h)
+  dedup_jaccard_threshold: 0.28      # min word-overlap ratio for summary/title dedup
+  dedup_entity_overlap_count: 3      # shared entities required within dedup_window_secs
+  dedup_entity_cluster_overlap_count: 4  # shared entities required within entity_cluster_window_secs
+  recency_half_life_hours: 12.0      # composite score halves every this many hours of post age
+  recency_floor: 0.6                 # minimum recency multiplier, however old the post
+  corroboration_weight: 0.15         # score multiplier added per corroborating channel
+  corroboration_cap: 1.5             # max total multiplier from corroboration boost
+  rumor_penalty: 0.7                 # score multiplier applied to posts categorised "Rumor"
 
 generation:
   output_dir: "./briefings"   # where PDFs and markdown are saved
   generate_at: "23:59"        # daily auto-generation time in daemon mode (HH:MM, in timezone below)
   timezone: "UTC"             # IANA timezone for generate_at (e.g. "Europe/London")
-  synthesis_post_limit: 20    # number of top posts fed to the intelligence front page
+  # Intelligence Assessment coverage is governed by triage.max_main_items
 
 storage:
   db_path: "./data/briefing.db"
@@ -200,12 +214,12 @@ python -m tg_compiler.main --batch
 
 What happens:
 1. Connects to Telegram
-2. For each channel: fetches messages since the last run (up to 500), downloads attached photos
-3. Sends each new post to LM Studio for analysis — headline title, importance, urgency, credibility, relevance, category, threat level, and key entities
-4. Runs triage: scores posts, applies keyword boosts, deduplicates cross-channel reports of the same story, splits into main/appendix
+2. For each channel: fetches every message since the last run (no cap), downloads attached photos — a failure on one channel is logged and the rest continue
+3. Sends each new post to LM Studio for analysis — headline title, importance, urgency, credibility, relevance, category, threat level, and key entities. Posts with fewer than 30 characters of text and no media are skipped without an LLM call
+4. Runs triage: scores posts (channel priority × credibility, keyword boost, rumour penalty, recency decay), clusters cross-channel reports of the same story — the best report is kept and the rest become "corroborated by" references that boost its score — then splits into main/appendix
 5. Generates `briefings/YYYY-MM-DD/TheDailyTelegram_YYYY-MM-DD_HHMMSS.pdf`
-6. Sends the top N posts (configurable via synthesis_post_limit) by composite score to LM Studio for intelligence synthesis
-7. Prepends a structured intelligence front page (situation summary, key themes, signals & warnings, named actors) to the briefing PDF
+6. Sends the triaged main items, a 7-day entity/category mention-trend table, and yesterday's assessment themes to LM Studio for intelligence synthesis
+7. Prepends a structured intelligence front page (situation summary, key themes with source citations and continuity tags, signals & warnings, named actors, emerging actors) to the briefing PDF, and persists the assessment for next-day continuity
 8. Disconnects
 
 Subsequent `--batch` runs on the same day are safe — cursor tracking ensures no post is fetched twice, and UNIQUE constraints prevent duplicate DB entries. If LM Studio is unreachable during the front page step, a warning is logged and the briefing PDF is kept as-is.
@@ -214,7 +228,7 @@ Typical log output:
 ```
 2026-06-08 09:00:01 INFO Scraped 14 new posts from news
 2026-06-08 09:00:02 INFO Scraped 3 new posts from intel
-2026-06-08 09:00:45 INFO Analysed 17 posts
+2026-06-08 09:00:45 INFO Analysed 15 posts (skipped 2)
 2026-06-08 09:00:46 INFO Briefing generated: briefings/2026-06-08/TheDailyTelegram_2026-06-08_090046.pdf
 2026-06-08 09:00:47 INFO Synthesising intelligence assessment from 17 posts…
 2026-06-08 09:01:30 INFO Intelligence front page prepended → briefings/2026-06-08/TheDailyTelegram_2026-06-08_090046.pdf
@@ -283,7 +297,8 @@ What happens when a new message arrives:
 What happens at `generate_at` time each day:
 1. Runs triage on all posts analysed that day
 2. Generates `briefings/YYYY-MM-DD/TheDailyTelegram_YYYY-MM-DD_HHMMSS.pdf`
-3. Purges media directories older than `retention_days`
+3. Synthesises and prepends the intelligence front page
+4. Purges media directories older than `retention_days`
 
 ### Stopping the daemon
 
@@ -321,7 +336,7 @@ python -m tg_compiler.main --analyse
 python -m tg_compiler.main --analyse --since 2026-06-07
 ```
 
-`--analyse` finds the most recent `TheDailyTelegram_*.pdf` in the date subdirectory, synthesises the top N posts (synthesis_post_limit) via LM Studio, and prepends the front page. Under `--batch` this runs automatically, so `--analyse` is mainly useful after a standalone `--generate`.
+`--analyse` finds the most recent `TheDailyTelegram_*.pdf` in the date subdirectory, re-runs triage to reconstruct the same main-item set as the briefing (recency decay is anchored to that day, so past dates rank identically), synthesises via LM Studio, and prepends the front page. Re-running it replaces the existing front page rather than stacking a second one. Under `--batch` this runs automatically, so `--analyse` is mainly useful after a standalone `--generate`.
 
 ---
 
@@ -341,14 +356,15 @@ Each `--batch` or `--generate` run writes a new uniquely timestamped PDF. The `.
 ### Report structure
 
 **Intelligence Front Page** — prepended automatically. Contains:
-- *Situation Summary* — 3-5 sentence analyst overview of the day's geopolitical picture
-- *Key Themes* — 3-5 cross-cutting patterns across today's reports
-- *Signals & Warnings* — 3-5 developments to watch with observable indicators
+- *Situation Summary* — 3-5 sentence analyst overview of the day's geopolitical picture, informed by 7-day mention trends
+- *Key Themes* — 3-5 cross-cutting patterns across today's reports, each with source citations (channel + time + link) and a continuity tag (*confirmed* / *escalating* / *retired*) relative to yesterday's assessment
+- *Signals & Warnings* — 3-5 developments to watch with observable indicators, each with source citations
 - *Named Actors* — 4-6 most significant actors and their activity today
+- *Emerging Actors / Topics* — entities mentioned today but absent from the prior 7 days (shown once a baseline exists)
 
-**Executive Summary** — top 10 posts across all channels, one line each with threat level badge, category, headline, and channel attribution.
+**Executive Summary** — up to 10 posts across all channels, one line each with threat level badge, category, headline, and channel attribution. Every CRITICAL-rated item is guaranteed a slot (even one that scored into the Appendix); remaining slots go to the highest-scoring posts.
 
-**Per-channel sections** — posts that cleared `min_composite_score`, sorted by composite score descending, capped at `max_main_items` total (excess goes to the Appendix). Cross-channel duplicates (same story reported by multiple channels within 2 hours, detected by word overlap ≥28% or ≥3 shared named entities) are deduplicated — only the highest-scoring report appears. Each entry shows:
+**Per-channel sections** — posts that cleared `min_composite_score`, sorted by composite score descending, capped at `max_main_items` total (excess goes to the Appendix). Cross-channel reports of the same story (detected by word overlap, or shared named entities with alias normalisation so "U.S."/"US"/"United States" match) are clustered: the highest-scoring report appears, with a **"Corroborated by N other channels"** line linking to the duplicates, and corroboration boosts the story's score. Each entry shows:
 - **Threat level badge**: ■ CRITICAL (red) · ■ HIGH (orange) · ■ MODERATE (amber) · ■ LOW (green)
 - **Category** in backtick style: `` `Breaking News` `` / `` `Analysis` `` / `` `Official Statement` `` / `` `Rumor` `` / `` `Media` `` / `` `Other` ``
 - LLM-generated headline title (5-10 words)
@@ -361,7 +377,7 @@ Each `--batch` or `--generate` run writes a new uniquely timestamped PDF. The `.
 
 **Appendix** — posts that scored below `min_composite_score`, listed compactly with direct Telegram links.
 
-**Statistics table** — total posts, main/appendix counts, channels covered, and a per-category breakdown.
+**Statistics table** — published item count, main/appendix split, channels covered, a per-category breakdown, and (after a `--batch` run) the pipeline funnel: scraped → analysed → skipped (low-content) → duplicates merged.
 
 ### Threat level scale
 
@@ -375,10 +391,14 @@ Each `--batch` or `--generate` run writes a new uniquely timestamped PDF. The `.
 ### Composite scoring formula
 
 ```
-score = 0.4 × importance + 0.3 × urgency + 0.2 × credibility + 0.1 × relevance
+base  = 0.4 × importance + 0.3 × urgency + 0.2 × credibility + 0.1 × relevance
+score = base × channel_priority × channel_credibility        (capped at 5.0 after keyword boost)
+      × rumor_penalty (if category is "Rumor")
+      × recency multiplier (halves every recency_half_life_hours, floored at recency_floor)
+      × corroboration boost (1 + 0.15 per corroborating channel, capped at 1.5×)
 ```
 
-Each dimension is rated 1–5 by the VLM. A post with all 5s scores 5.0. Keyword matches add `keyword_boost` (default 0.5) to the score, capped at 5.0.
+Each dimension is rated 1–5 by the VLM. Keyword matches add `keyword_boost` (default 0.5) before the cap. The recency decay is anchored to the briefing day, so regenerating a past date reproduces that day's ranking. Displayed scores are clamped to 5.0.
 
 ---
 
