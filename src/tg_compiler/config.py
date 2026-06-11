@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChannelConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     slug: str
     username: str | None = None
     id: int | None = None
@@ -14,6 +15,7 @@ class ChannelConfig(BaseModel):
 
 
 class TelegramConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     api_id: int
     api_hash: str
     session_name: str = "briefing_session"
@@ -23,6 +25,7 @@ class TelegramConfig(BaseModel):
 
 
 class LMStudioConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     model: str
     server_host: str = "localhost"
     server_port: int = 1234
@@ -33,6 +36,7 @@ class LMStudioConfig(BaseModel):
 
 
 class TriageConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     keywords: list[str] = Field(default_factory=list)
     keyword_boost: float = 0.5
     min_composite_score: float = 2.5
@@ -58,6 +62,7 @@ class GenerationConfig(BaseModel):
 
 
 class StorageConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     db_path: str = "./data/briefing.db"
     media_dir: str = "./data/media"
     retention_days: int = 30

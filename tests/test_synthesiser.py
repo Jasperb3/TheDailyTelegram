@@ -191,7 +191,8 @@ def test_render_front_page_md_emerging_section_present_when_nonempty():
 
     md = _render_front_page_md(_good_intel(), date(2026, 6, 9), emerging_entities=["bahrain"])
     assert "Emerging Actors / Topics" in md
-    assert "bahrain" in md
+    # normalised lowercase entities are title-cased for display
+    assert "Bahrain" in md
 
 
 def test_render_front_page_md_emerging_section_absent_when_empty():

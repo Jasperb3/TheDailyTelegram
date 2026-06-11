@@ -140,3 +140,11 @@ def test_pipeline_stats_rendered_when_scraped_set():
 def test_pipeline_stats_absent_when_not_set():
     md = render_markdown(make_content(n_main=1, n_appendix=0))
     assert "Scraped" not in md
+
+
+def test_score_display_clamped_at_five():
+    content = make_content(n_main=1, n_appendix=0)
+    content.main_items[0].composite_score = 7.5  # corroboration boost can exceed 5
+    md = render_markdown(content)
+    assert "Score 5.0/5" in md
+    assert "7.5/5" not in md

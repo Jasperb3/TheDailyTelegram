@@ -18,7 +18,7 @@
 {% if item.analysis.summary %}
 ### {{ threat_badge(item.analysis.threat_level) }} · `{{ item.analysis.category }}` · **{{ item.analysis.title if item.analysis.title else item.analysis.summary[:90] ~ ('…' if item.analysis.summary|length > 90 else '') }}**
 
-<small>{{ item.post.timestamp.strftime('%H:%M UTC') }} · Score {{ "%.1f"|format(item.composite_score) }}/5 · ID {{ item.post.message_id }}{% if username %} · [↗ t.me](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %}</small>
+<small>{{ item.post.timestamp.strftime('%H:%M UTC') }} · Score {{ "%.1f"|format([item.composite_score, 5.0]|min) }}/5 · ID {{ item.post.message_id }}{% if username %} · [↗ t.me](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %}</small>
 
 {{ item.analysis.summary }}
 
@@ -68,13 +68,13 @@ _No posts above threshold for this channel._
 
 | Metric | Value |
 |--------|-------|
-| Total posts | {{ content.main_items|length + content.appendix_items|length }} |
+| Published items | {{ content.main_items|length + content.appendix_items|length }} |
 | Main briefing | {{ content.main_items|length }} |
 | Appendix | {{ content.appendix_items|length }} |
 {%- for cat, count in content.category_counts | dictsort(by='value', reverse=true) %}
 | {{ cat }} | {{ count }} |
 {%- endfor %}
-{%- if content.posts_scraped %}
+{%- if content.posts_scraped or content.posts_analysed or content.posts_skipped %}
 | Scraped | {{ content.posts_scraped }} |
 | Analysed | {{ content.posts_analysed }} |
 | Skipped (low-content) | {{ content.posts_skipped }} |

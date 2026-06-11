@@ -49,3 +49,22 @@ def test_synthesis_post_limit_rejected(tmp_path):
     f.write_text(yaml_with_old_field)
     with pytest.raises(ValidationError):
         load_config(str(f))
+
+
+def test_unknown_triage_key_rejected(tmp_path):
+    """Typos inside nested sections (e.g. rumour_penalty) must fail loudly."""
+    bad_yaml = MINIMAL_YAML + "\ntriage:\n  rumour_penalty: 0.5\n"
+    f = tmp_path / "config.yaml"
+    f.write_text(bad_yaml)
+    with pytest.raises(ValidationError):
+        load_config(str(f))
+
+
+def test_unknown_channel_key_rejected(tmp_path):
+    bad_yaml = MINIMAL_YAML.replace(
+        'username: "@testchan"', 'username: "@testchan"\n      credibilty: 1.2'
+    )
+    f = tmp_path / "config.yaml"
+    f.write_text(bad_yaml)
+    with pytest.raises(ValidationError):
+        load_config(str(f))

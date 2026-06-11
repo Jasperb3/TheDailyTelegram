@@ -59,3 +59,42 @@ def test_entity_alias_normalization_merges_history():
 def test_no_history_returns_empty_results():
     trends = compute_trends([], date(2026, 6, 9))
     assert trends == {"entity_deltas": [], "category_deltas": [], "emerging_entities": []}
+
+
+def test_skipped_category_excluded_from_trends():
+    history = [
+        _pair(1, 9, "Military", ["Bahrain"]),
+        _pair(2, 9, "Skipped", []),
+        _pair(3, 8, "Skipped", []),
+        _pair(4, 8, "Military", ["Iran"]),
+    ]
+    trends = compute_trends(history, date(2026, 6, 9))
+    categories = {d["category"] for d in trends["category_deltas"]}
+    assert "Skipped" not in categories
+
+
+def test_emerging_entities_empty_without_prior_baseline():
+    # All posts on the target day (fresh DB / day one): no baseline, so
+    # nothing should be flagged as emerging.
+    history = [
+        _pair(1, 9, "Military", ["Bahrain"]),
+        _pair(2, 9, "Military", ["Iran"]),
+    ]
+    trends = compute_trends(history, date(2026, 6, 9))
+    assert trends["emerging_entities"] == []
+
+
+def test_emerging_entities_capped_and_sorted_by_frequency():
+    from tg_compiler.trends import MAX_EMERGING_ENTITIES
+
+    history = [_pair(1, 8, "Military", ["OldActor"])]
+    # 20 new entities today; "hotspot" mentioned in three posts
+    for i in range(20):
+        history.append(_pair(10 + i, 9, "Military", [f"new_entity_{i:02d}"]))
+    for j in range(3):
+        history.append(_pair(50 + j, 9, "Military", ["hotspot"]))
+
+    trends = compute_trends(history, date(2026, 6, 9))
+    emerging = trends["emerging_entities"]
+    assert len(emerging) == MAX_EMERGING_ENTITIES
+    assert emerging[0] == "hotspot"

@@ -2,7 +2,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 
 from tg_compiler.config import TriageConfig
 from tg_compiler.db import PostRecord, AnalysisRecord
@@ -141,7 +141,13 @@ def triage(
     channel_credibilities: dict[str, float] | None = None,
 ) -> BriefingContent:
     today = today or date.today()
-    now = datetime.now(timezone.utc)
+    # Anchor recency decay to the end of the briefing day when triaging a past date,
+    # so retrospective runs (--analyse --since) reproduce the same ranking the daemon
+    # would have produced instead of decaying every post to the floor.
+    now = min(
+        datetime.now(timezone.utc),
+        datetime.combine(today, time.max, tzinfo=timezone.utc),
+    )
     scored: list[TriagedPost] = []
 
     for post, analysis in pairs:
@@ -224,9 +230,10 @@ def triage(
     category_counts = dict(Counter(t.analysis.category for t in all_kept))
     channel_names = sorted({p.channel_name for p, _ in pairs})
 
-    # Executive Summary: every CRITICAL item is guaranteed a slot, regardless of score,
-    # then filled with the highest-scoring remaining items up to 10.
-    critical_items = [t for t in main_items if t.analysis.threat_level == "CRITICAL"]
+    # Executive Summary: every CRITICAL item is guaranteed a slot, regardless of score
+    # (including those relegated to the appendix), then filled with the highest-scoring
+    # remaining main items up to 10.
+    critical_items = [t for t in all_kept if t.analysis.threat_level == "CRITICAL"]
     other_items = [t for t in main_items if t.analysis.threat_level != "CRITICAL"]
     executive_items = (critical_items + other_items)[:10]
 

@@ -441,3 +441,32 @@ def test_posts_clustered_count():
     config = TriageConfig(min_composite_score=0.0)
     result = triage([(p1, a1), (p2, a2), (p3, a3)], config)
     assert result.posts_clustered == 1
+
+
+def test_recency_anchored_to_briefing_day_for_past_dates():
+    # Triaging a date in the past must anchor decay to the end of that day,
+    # not wall-clock now — otherwise retrospective --analyse runs decay every
+    # post to the floor and select a different main set than the original run.
+    target = date(2026, 1, 10)
+    post, analysis = make_pair(importance=4, urgency=4, credibility=4, relevance=4,
+                                timestamp=datetime(2026, 1, 10, 22, 0, tzinfo=timezone.utc))
+    config = TriageConfig(min_composite_score=0.0, recency_half_life_hours=12.0, recency_floor=0.6)
+    result = triage([(post, analysis)], config, today=target)
+    base = 0.4 * 4 + 0.3 * 4 + 0.2 * 4 + 0.1 * 4
+    # ~2h old relative to end of the briefing day: 0.5 ** (2/12) ≈ 0.891
+    expected = base * (0.5 ** (2 / 12))
+    assert abs(result.main_items[0].composite_score - expected) < 0.01
+
+
+def test_executive_items_includes_critical_from_appendix():
+    crit_post, crit_analysis = make_pair(msg_id=99, importance=2, urgency=2, credibility=2, relevance=2,
+                                          summary="A critical alert that scored below the main threshold")
+    crit_analysis.threat_level = "CRITICAL"
+    high_post, high_analysis = make_pair(msg_id=1, importance=5, urgency=5, credibility=5, relevance=5,
+                                          summary="A completely different high scoring story from elsewhere")
+    high_analysis.threat_level = "HIGH"
+
+    config = TriageConfig(min_composite_score=3.0)
+    result = triage([(crit_post, crit_analysis), (high_post, high_analysis)], config)
+    assert any(t.post.message_id == 99 for t in result.appendix_items)
+    assert any(t.post.message_id == 99 for t in result.executive_items)
