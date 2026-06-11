@@ -42,24 +42,25 @@ class Scraper:
 
     async def scrape_channel(self, channel_cfg: ChannelConfig) -> list[PostRecord]:
         entity = channel_cfg.username or channel_cfg.id
-        channel_entity = await self._client.get_entity(entity)
-        channel_id = channel_entity.id
-        self.channel_map[channel_id] = channel_cfg
-        last_seen = self._db.get_last_seen_id(channel_id)
         collected: list[PostRecord] = []
-        max_id_seen = last_seen
-
-        lookback_date = (
-            datetime.now(timezone.utc) - timedelta(seconds=self._cfg.telegram.lookback_seconds)
-            if last_seen == 0 else None
-        )
-        iter_kwargs: dict = {"reverse": True, "limit": 500}
-        if last_seen > 0:
-            iter_kwargs["offset_id"] = last_seen
-        else:
-            iter_kwargs["offset_date"] = lookback_date
 
         try:
+            channel_entity = await self._client.get_entity(entity)
+            channel_id = channel_entity.id
+            self.channel_map[channel_id] = channel_cfg
+            last_seen = self._db.get_last_seen_id(channel_id)
+            max_id_seen = last_seen
+
+            lookback_date = (
+                datetime.now(timezone.utc) - timedelta(seconds=self._cfg.telegram.lookback_seconds)
+                if last_seen == 0 else None
+            )
+            iter_kwargs: dict = {"reverse": True, "limit": 500}
+            if last_seen > 0:
+                iter_kwargs["offset_id"] = last_seen
+            else:
+                iter_kwargs["offset_date"] = lookback_date
+
             async for msg in self._client.iter_messages(channel_entity, **iter_kwargs):
                 if not isinstance(msg, Message):
                     if msg.id > max_id_seen:
@@ -117,8 +118,10 @@ class Scraper:
             log.error("Channel %s is private or inaccessible", entity)
         except FloodWaitError as e:
             log.warning("FloodWait for %s exceeded threshold (%ds) — partial results saved", entity, e.seconds)
+        except Exception as e:
+            log.error("Scraping channel %s failed: %s", entity, e)
         finally:
-            if max_id_seen > last_seen:
+            if "max_id_seen" in locals() and max_id_seen > last_seen:
                 self._db.set_last_seen_id(channel_id, max_id_seen)
 
         return collected

@@ -53,8 +53,11 @@ async def run_batch(config: AppConfig) -> None:
     async with Scraper(config, db) as scraper:
         with logging_redirect_tqdm():
             for channel_cfg in tqdm(config.telegram.channels, desc="Scraping channels", unit="channel"):
-                posts = await scraper.scrape_channel(channel_cfg)
-                log.info("Scraped %d new posts from %s", len(posts), channel_cfg.slug)
+                try:
+                    posts = await scraper.scrape_channel(channel_cfg)
+                    log.info("Scraped %d new posts from %s", len(posts), channel_cfg.slug)
+                except Exception as e:
+                    log.error("Scraping channel %s failed: %s", channel_cfg.slug, e)
         channel_map = scraper.channel_map
 
     analyzer = Analyzer(config, db)
@@ -111,9 +114,8 @@ async def schedule_daily_generation(config: AppConfig) -> None:
 
 async def run_daemon(config: AppConfig) -> None:
     from telethon import TelegramClient, events
-    from tg_compiler.analyzer import Analyzer
+    from tg_compiler.analyzer import Analyzer, analysis_to_record
     from tg_compiler.scraper import media_path_for
-    from tg_compiler.db import AnalysisRecord
 
     db = Database(config.storage.db_path)
     db.init_schema()
@@ -178,19 +180,7 @@ async def run_daemon(config: AppConfig) -> None:
                 record.id = post_id
                 try:
                     analysis = await analyzer.analyze_post(record, channel_cfg)
-                    db.insert_analysis(AnalysisRecord(
-                        post_id=post_id,
-                        summary=analysis.summary,
-                        importance_score=analysis.importance_score,
-                        urgency_score=analysis.urgency_score,
-                        credibility_score=analysis.credibility_score,
-                        relevance_score=analysis.relevance_score,
-                        category=analysis.category,
-                        key_entities=analysis.key_entities,
-                        image_insights=analysis.image_description,
-                        model_used=config.lmstudio.model,
-                        threat_level=analysis.threat_level,
-                    ))
+                    db.insert_analysis(analysis_to_record(post_id, analysis, config.lmstudio.model))
                 except Exception as e:
                     log.error("Analysis failed for post %s: %s", msg.id, e)
 

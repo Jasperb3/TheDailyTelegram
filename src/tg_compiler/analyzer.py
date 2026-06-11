@@ -38,6 +38,9 @@ SYSTEM_PROMPT = (
 
 _VALID_THREAT_LEVELS = {"CRITICAL", "HIGH", "MODERATE", "LOW"}
 
+# Posts with less text than this and no media are skipped before analysis (B1).
+MIN_CONTENT_CHARS = 30
+
 
 class PostAnalysis(BaseModel):
     title: str = ""
@@ -174,9 +177,19 @@ def _check_numeric_consistency(summary: str, image_desc: str) -> bool:
     return True
 
 
+_REFUSAL_RE = re.compile(
+    r"(?i)\b(the user provided|no content (?:was )?provided|cannot analy[sz]e"
+    r"|unable to analy[sz]e|the user|i cannot|as an ai)\b"
+)
+
+
 def _sanitize(analysis: PostAnalysis) -> PostAnalysis:
     analysis.title = _clean_title(analysis.title)
+    if _REFUSAL_RE.search(analysis.title):
+        analysis.title = ""
     analysis.summary = strip_dangerous_html(analysis.summary)
+    if _REFUSAL_RE.search(analysis.summary):
+        analysis.summary = ""
     analysis.key_entities = clean_entities(analysis.key_entities)
     analysis.image_description = _clean_image_insights(analysis.image_description)
     if analysis.image_description and not _check_numeric_consistency(
@@ -184,6 +197,23 @@ def _sanitize(analysis: PostAnalysis) -> PostAnalysis:
     ):
         analysis.image_description = None
     return analysis
+
+
+def analysis_to_record(post_id: int, analysis: PostAnalysis, model_used: str) -> AnalysisRecord:
+    return AnalysisRecord(
+        post_id=post_id,
+        title=analysis.title,
+        summary=analysis.summary,
+        importance_score=analysis.importance_score,
+        urgency_score=analysis.urgency_score,
+        credibility_score=analysis.credibility_score,
+        relevance_score=analysis.relevance_score,
+        category=analysis.category,
+        key_entities=analysis.key_entities,
+        image_insights=analysis.image_description,
+        model_used=model_used,
+        threat_level=analysis.threat_level,
+    )
 
 
 class Analyzer:
@@ -199,6 +229,7 @@ class Analyzer:
             self._client = OpenAI(
                 base_url=f"http://{cfg.server_host}:{cfg.server_port}/v1",
                 api_key=api_key,
+                timeout=120,
             )
         return self._client
 
@@ -283,23 +314,24 @@ class Analyzer:
         bar = tqdm(total=len(posts), desc="Analysing posts", unit="post")
 
         async def _analyse_and_save(post: PostRecord) -> None:
+            if len(post.text.strip()) < MIN_CONTENT_CHARS and not post.media_paths:
+                self._db.insert_analysis(AnalysisRecord(
+                    post_id=post.id,
+                    summary="",
+                    importance_score=None,
+                    urgency_score=None,
+                    credibility_score=None,
+                    relevance_score=None,
+                    category="Skipped",
+                    key_entities=[],
+                    model_used=self._cfg.lmstudio.model,
+                ))
+                bar.update(1)
+                return
             channel_cfg = channel_map.get(post.channel_id) if channel_map else None
             async with sem:
                 analysis = await self.analyze_post(post, channel_cfg)
-            self._db.insert_analysis(AnalysisRecord(
-                post_id=post.id,
-                title=analysis.title,
-                summary=analysis.summary,
-                importance_score=analysis.importance_score,
-                urgency_score=analysis.urgency_score,
-                credibility_score=analysis.credibility_score,
-                relevance_score=analysis.relevance_score,
-                category=analysis.category,
-                key_entities=analysis.key_entities,
-                image_insights=analysis.image_description,
-                model_used=self._cfg.lmstudio.model,
-                threat_level=analysis.threat_level,
-            ))
+            self._db.insert_analysis(analysis_to_record(post.id, analysis, self._cfg.lmstudio.model))
             bar.update(1)
 
         with logging_redirect_tqdm():

@@ -98,6 +98,8 @@ def triage(
     scored: list[TriagedPost] = []
 
     for post, analysis in pairs:
+        if analysis.category == "Skipped":
+            continue
         if not analysis.summary or len(analysis.summary.strip()) < 10:
             continue
         if not all([analysis.importance_score, analysis.urgency_score,

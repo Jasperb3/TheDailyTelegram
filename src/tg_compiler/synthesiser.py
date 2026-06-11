@@ -69,6 +69,7 @@ async def synthesise(config: AppConfig, posts: list[dict]) -> dict | None:
         client = OpenAI(
             base_url=f"http://{cfg.server_host}:{cfg.server_port}/v1",
             api_key=cfg.api_token or "lm-studio",
+            timeout=300,
         )
     except Exception as e:
         log.error("LM Studio not reachable — cannot generate intelligence front page: %s", e)

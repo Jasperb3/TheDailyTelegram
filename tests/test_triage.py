@@ -267,3 +267,12 @@ def test_dedup_24h_entity_cluster_not_triggered_with_only_3_entities():
     result = triage([(p1, a1), (p2, a2)], config)
     total = len(result.main_items) + len(result.appendix_items)
     assert total == 2
+
+
+def test_skipped_category_excluded_from_main_and_appendix():
+    post, analysis = make_pair(category="Skipped", summary="", importance=None, urgency=None,
+                                credibility=None, relevance=None)
+    config = TriageConfig(keywords=[], keyword_boost=0.5, min_composite_score=0.0)
+    result = triage([(post, analysis)], config)
+    assert result.main_items == []
+    assert result.appendix_items == []

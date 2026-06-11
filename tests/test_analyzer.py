@@ -1,6 +1,9 @@
 import pytest
 from pydantic import ValidationError
-from tg_compiler.analyzer import PostAnalysis, parse_analysis_fallback, build_messages, _clean_image_insights, _check_numeric_consistency
+from tg_compiler.analyzer import (
+    PostAnalysis, parse_analysis_fallback, build_messages, _clean_image_insights,
+    _check_numeric_consistency, _sanitize, analysis_to_record,
+)
 from tg_compiler.utils import clean_entities
 
 
@@ -101,3 +104,95 @@ def test_build_messages_truncates_long_text(sample_post):
     user_content = messages[1]["content"]
     text_part = next(p for p in user_content if p["type"] == "text")
     assert text_part["text"].count("x") == 3000
+
+
+def _analysis(**overrides):
+    base = dict(
+        title="A normal title",
+        summary="A normal summary about events.",
+        importance_score=3, urgency_score=3, credibility_score=3, relevance_score=3,
+        category="Analysis", key_entities=[], reasoning="",
+    )
+    base.update(overrides)
+    return PostAnalysis.model_validate(base)
+
+
+@pytest.mark.parametrize("refusal_summary", [
+    "The user provided a post from RerumNovarum at a future date, but no content was provided for analysis.",
+    "I cannot analyze this post as no content was provided.",
+    "Unable to analyse the image as it was not included.",
+    "As an AI, I am unable to analyse this content.",
+    "No content provided for this post.",
+])
+def test_sanitize_strips_refusal_summary(refusal_summary):
+    pa = _analysis(summary=refusal_summary)
+    result = _sanitize(pa)
+    assert result.summary == ""
+
+
+def test_sanitize_strips_refusal_title():
+    pa = _analysis(title="Türkiye's commitment to the user to establish peace")
+    result = _sanitize(pa)
+    assert result.title == ""
+
+
+def test_sanitize_keeps_normal_summary_and_title():
+    pa = _analysis(title="Iran launches missiles at US targets", summary="Multiple missiles fired overnight.")
+    result = _sanitize(pa)
+    assert result.title == "Iran launches missiles at US targets"
+    assert result.summary == "Multiple missiles fired overnight."
+
+
+def test_analysis_to_record_includes_title():
+    pa = _analysis(title="Headline here", key_entities=["Iran"])
+    record = analysis_to_record(post_id=7, analysis=pa, model_used="test-model")
+    assert record.post_id == 7
+    assert record.title == "Headline here"
+    assert record.model_used == "test-model"
+    assert record.threat_level == pa.threat_level
+    assert record.key_entities == ["Iran"]
+
+
+@pytest.fixture
+def app_config():
+    from tg_compiler.config import AppConfig, TelegramConfig, LMStudioConfig
+
+    return AppConfig(
+        telegram=TelegramConfig(api_id=1, api_hash="x", channels=[]),
+        lmstudio=LMStudioConfig(model="test-model"),
+    )
+
+
+async def test_process_unanalysed_skips_short_textonly_post(db, app_config, monkeypatch):
+    from tg_compiler.analyzer import Analyzer
+    from tg_compiler.db import PostRecord
+    from datetime import datetime, timezone
+
+    short_post = PostRecord(
+        channel_id=1, channel_name="chan", message_id=1,
+        timestamp=datetime(2026, 6, 7, tzinfo=timezone.utc),
+        text="ok", media_paths=[], has_images=False, raw_json="{}",
+    )
+    long_post = PostRecord(
+        channel_id=1, channel_name="chan", message_id=2,
+        timestamp=datetime(2026, 6, 7, tzinfo=timezone.utc),
+        text="x" * 50, media_paths=[], has_images=False, raw_json="{}",
+    )
+    db.insert_post(short_post)
+    db.insert_post(long_post)
+
+    analyzer = Analyzer(app_config, db)
+
+    async def fake_analyze_post(post, channel_cfg=None):
+        return _analysis(summary="Real analysis output for a long post.")
+
+    monkeypatch.setattr(analyzer, "analyze_post", fake_analyze_post)
+
+    count = await analyzer.process_unanalysed()
+    assert count == 2
+
+    pairs = db.get_days_posts_with_analyses("2026-06-07")
+    by_id = {p.message_id: a for p, a in pairs}
+    assert by_id[1].category == "Skipped"
+    assert by_id[1].importance_score is None
+    assert by_id[2].category == "Analysis"
