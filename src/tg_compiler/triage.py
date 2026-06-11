@@ -220,6 +220,13 @@ def triage(
 
     main_scored = [t for t in kept if t.composite_score >= config.min_composite_score]
     appendix_items = [t for t in kept if t.composite_score < config.min_composite_score]
+    # Adaptive floor: when too few items clear min_composite_score, promote the
+    # highest-scoring appendix items so the main briefing never runs thin.
+    # appendix_items is already sorted descending, so order is preserved.
+    if len(main_scored) < config.min_main_items:
+        shortfall = config.min_main_items - len(main_scored)
+        main_scored += appendix_items[:shortfall]
+        appendix_items = appendix_items[shortfall:]
     if config.max_main_items > 0:
         appendix_items = main_scored[config.max_main_items:] + appendix_items
         main_items = main_scored[:config.max_main_items]

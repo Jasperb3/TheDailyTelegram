@@ -29,6 +29,7 @@ triage:
   keywords: ["urgent", "breaking", "launch"]  # words that add keyword_boost to a post's score
   keyword_boost: 0.5        # score added when a keyword matches (capped at 5.0 total)
   min_composite_score: 3.5  # posts below this threshold go to the Appendix section
+  min_main_items: 10        # if fewer posts clear the threshold, top appendix items are promoted to fill
   max_main_items: 50        # hard cap on main briefing length (excess → appendix)
   dedup_window_secs: 7200   # time window for entity-overlap deduplication (default: 2h)
   dedup_summary_window_secs: 21600   # time window for summary/title word-overlap dedup (default: 6h)

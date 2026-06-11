@@ -53,9 +53,7 @@
 {% if emerging_entities %}
 ### Emerging Actors / Topics
 
-{% for entity in emerging_entities %}
-- {{ entity|title }}
-{% endfor %}
+<p class="emerging-list">{% for entity in emerging_entities %}{{ entity|title }}{{ ' · ' if not loop.last }}{% endfor %}</p>
 
 ---
 {% endif %}

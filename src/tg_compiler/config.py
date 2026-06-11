@@ -40,6 +40,7 @@ class TriageConfig(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     keyword_boost: float = 0.5
     min_composite_score: float = 2.5
+    min_main_items: int = 10    # if fewer items clear min_composite_score, promote top appendix items to fill
     max_main_items: int = 50
     dedup_window_secs: int = 7200       # max age gap (seconds) for cross-channel dedup
     dedup_summary_window_secs: int = 21600  # window (6h) for summary/title Jaccard similarity dedup

@@ -50,10 +50,33 @@ def test_keyword_boost_capped_at_five():
 
 def test_below_threshold_goes_to_appendix():
     post, analysis = make_pair(importance=1, urgency=1, credibility=1, relevance=1)
-    config = TriageConfig(min_composite_score=3.0)
+    config = TriageConfig(min_composite_score=3.0, min_main_items=0)
     result = triage([(post, analysis)], config)
     assert len(result.main_items) == 0
     assert len(result.appendix_items) == 1
+
+
+def test_min_main_items_promotes_top_appendix_items():
+    # 5 dissimilar low-scoring posts, none clear the threshold; min_main_items=3
+    # should promote the 3 highest-scored into main, leaving 2 in the appendix.
+    summaries = [
+        "Airstrikes hit Beirut overnight causing significant damage",
+        "Ceasefire negotiations collapsed after delegates walked out",
+        "President signed emergency decree expanding military powers",
+        "Floods displaced thousands across southern provinces",
+        "Opposition leader arrested on espionage charges",
+    ]
+    pairs = [
+        make_pair(importance=i + 1, urgency=1, credibility=1, relevance=1, msg_id=i,
+                  summary=summaries[i])
+        for i in range(5)
+    ]
+    config = TriageConfig(min_composite_score=4.5, min_main_items=3)
+    result = triage(pairs, config)
+    assert len(result.main_items) == 3
+    assert len(result.appendix_items) == 2
+    main_scores = [t.composite_score for t in result.main_items]
+    assert min(main_scores) >= max(t.composite_score for t in result.appendix_items)
 
 
 def test_sorted_by_score_descending():
@@ -466,7 +489,7 @@ def test_executive_items_includes_critical_from_appendix():
                                           summary="A completely different high scoring story from elsewhere")
     high_analysis.threat_level = "HIGH"
 
-    config = TriageConfig(min_composite_score=3.0)
+    config = TriageConfig(min_composite_score=3.0, min_main_items=0)
     result = triage([(crit_post, crit_analysis), (high_post, high_analysis)], config)
     assert any(t.post.message_id == 99 for t in result.appendix_items)
     assert any(t.post.message_id == 99 for t in result.executive_items)

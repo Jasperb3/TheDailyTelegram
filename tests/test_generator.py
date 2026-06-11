@@ -121,7 +121,8 @@ def test_corroboration_line_rendered_when_present():
 
 def test_corroboration_line_absent_when_none():
     md = render_markdown(make_content(n_main=1, n_appendix=0))
-    assert "Corroborated by" not in md
+    # the static reader's key mentions the phrase, so check the per-item bold marker
+    assert "**Corroborated by" not in md
 
 
 def test_pipeline_stats_rendered_when_scraped_set():
@@ -131,15 +132,13 @@ def test_pipeline_stats_rendered_when_scraped_set():
     content.posts_skipped = 10
     content.posts_clustered = 5
     md = render_markdown(content)
-    assert "| Scraped | 100 |" in md
-    assert "| Analysed | 90 |" in md
-    assert "| Skipped (low-content) | 10 |" in md
-    assert "| Duplicates merged | 5 |" in md
+    assert "100 scraped · 90 analysed · 10 skipped (low-content)" in md
+    assert "5 duplicates merged" in md
 
 
 def test_pipeline_stats_absent_when_not_set():
     md = render_markdown(make_content(n_main=1, n_appendix=0))
-    assert "Scraped" not in md
+    assert "scraped" not in md
 
 
 def test_score_display_clamped_at_five():
@@ -148,3 +147,53 @@ def test_score_display_clamped_at_five():
     md = render_markdown(content)
     assert "Score 5.0/5" in md
     assert "7.5/5" not in md
+
+
+def test_main_items_rendered_in_score_order_not_by_channel():
+    content = make_content(n_main=0, n_appendix=0)
+    a = make_triaged(msg_id=1, channel="zeta", summary="Highest priority story.")
+    a.composite_score = 5.0
+    b = make_triaged(msg_id=2, channel="alpha", summary="Middle priority story.")
+    b.composite_score = 4.0
+    c = make_triaged(msg_id=3, channel="zeta", summary="Lowest priority story.")
+    c.composite_score = 3.0
+    content.main_items = [a, b, c]
+    content.channel_names = ["alpha", "zeta"]
+    md = render_markdown(content)
+    assert "Priority Reports" in md
+    body = md[md.index("Priority Reports"):]
+    assert (
+        body.index("Highest priority story.")
+        < body.index("Middle priority story.")
+        < body.index("Lowest priority story.")
+    )
+    # channel-by-channel sections are gone
+    assert "## Channel:" not in md
+    assert "No posts above threshold" not in md
+
+
+def test_smallprint_readers_key_always_present():
+    md = render_markdown(make_content())
+    assert "READER'S KEY" in md
+    assert "0.4×importance + 0.3×urgency + 0.2×credibility + 0.1×relevance" in md
+    # also present when the briefing is empty
+    empty = BriefingContent(date=date(2026, 6, 7), main_items=[], appendix_items=[], channel_names=[])
+    assert "READER'S KEY" in render_markdown(empty)
+
+
+def test_pdf_embeds_images_from_absolute_paths(tmp_path):
+    import fitz
+
+    img_path = tmp_path / "photo.png"
+    pix = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 12, 12))
+    pix.clear_with(120)
+    pix.save(str(img_path))
+
+    content = make_content(n_main=1, n_appendix=0)
+    content.main_items[0].post.media_paths = [str(img_path)]
+    pdf_path = generate_briefing(content, output_dir=str(tmp_path), pdf=True)
+
+    doc = fitz.open(str(pdf_path))
+    n_images = sum(len(page.get_images()) for page in doc)
+    doc.close()
+    assert n_images >= 1

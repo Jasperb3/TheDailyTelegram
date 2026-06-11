@@ -133,6 +133,7 @@ triage:
   keywords: ["urgent", "breaking", "launch"]  # words that add keyword_boost to a post's score
   keyword_boost: 0.5        # score added when a keyword matches (total capped at 5.0)
   min_composite_score: 3.5  # posts below this go to the Appendix section
+  min_main_items: 10        # if fewer posts clear the threshold, top appendix items are promoted to fill
   max_main_items: 50        # hard cap on main briefing length (overflow → appendix)
   dedup_window_secs: 7200   # time window for entity-overlap deduplication (default: 2h)
   dedup_summary_window_secs: 21600   # window for summary/title word-overlap dedup (default: 6h)
@@ -364,7 +365,7 @@ Each `--batch` or `--generate` run writes a new uniquely timestamped PDF. The `.
 
 **Executive Summary** — up to 10 posts across all channels, one line each with threat level badge, category, headline, and channel attribution. Every CRITICAL-rated item is guaranteed a slot (even one that scored into the Appendix); remaining slots go to the highest-scoring posts.
 
-**Per-channel sections** — posts that cleared `min_composite_score`, sorted by composite score descending, capped at `max_main_items` total (excess goes to the Appendix). Cross-channel reports of the same story (detected by word overlap, or shared named entities with alias normalisation so "U.S."/"US"/"United States" match) are clustered: the highest-scoring report appears, with a **"Corroborated by N other channels"** line linking to the duplicates, and corroboration boosts the story's score. Each entry shows:
+**Priority Reports** — all main-briefing posts in a single section, sorted by composite score descending so the most important story always appears first regardless of source channel (the channel is shown in each item's byline). Posts qualify by clearing `min_composite_score`; if fewer than `min_main_items` qualify, the highest-scoring remainder are promoted so the section never runs thin, and the total is capped at `max_main_items` (excess goes to the Appendix). Cross-channel reports of the same story (detected by word overlap, or shared named entities with alias normalisation so "U.S."/"US"/"United States" match) are clustered: the highest-scoring report appears, with a **"Corroborated by N other channels"** line linking to the duplicates, and corroboration boosts the story's score. Each entry shows:
 - **Threat level badge**: ■ CRITICAL (red) · ■ HIGH (orange) · ■ MODERATE (amber) · ■ LOW (green)
 - **Category** in backtick style: `` `Breaking News` `` / `` `Analysis` `` / `` `Official Statement` `` / `` `Rumor` `` / `` `Media` `` / `` `Other` ``
 - LLM-generated headline title (5-10 words)
@@ -377,7 +378,9 @@ Each `--batch` or `--generate` run writes a new uniquely timestamped PDF. The `.
 
 **Appendix** — posts that scored below `min_composite_score`, listed compactly with direct Telegram links.
 
-**Statistics table** — published item count, main/appendix split, channels covered, a per-category breakdown, and (after a `--batch` run) the pipeline funnel: scraped → analysed → skipped (low-content) → duplicates merged.
+**Statistics** — a compact block with the published item count, priority/appendix split, channels covered, a per-category breakdown, and (after a `--batch` run) the pipeline funnel: scraped → analysed → skipped (low-content) → duplicates merged.
+
+**Reader's Key** — static smallprint at the end of every edition explaining how the document is produced, its section order, the scoring formula, de-duplication, and threat levels. It is template boilerplate, never written or altered by the LLM, and identical in every run.
 
 ### Threat level scale
 

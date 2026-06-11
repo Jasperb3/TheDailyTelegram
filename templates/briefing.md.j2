@@ -9,16 +9,13 @@
 {% endfor %}
 </div>
 
-{% for channel in content.channel_names %}
-## Channel: {{ channel }}
+## Priority Reports
 
-{% set username = content.channel_links.get(channel, '') %}
-
-{% for item in content.main_items if item.post.channel_name == channel %}
-{% if item.analysis.summary %}
+{% for item in content.main_items if item.analysis.summary %}
+{% set username = content.channel_links.get(item.post.channel_name, '') %}
 ### {{ threat_badge(item.analysis.threat_level) }} · `{{ item.analysis.category }}` · **{{ item.analysis.title if item.analysis.title else item.analysis.summary[:90] ~ ('…' if item.analysis.summary|length > 90 else '') }}**
 
-<small>{{ item.post.timestamp.strftime('%H:%M UTC') }} · Score {{ "%.1f"|format([item.composite_score, 5.0]|min) }}/5 · ID {{ item.post.message_id }}{% if username %} · [↗ t.me](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %}</small>
+<small>**{{ item.post.channel_name }}** · {{ item.post.timestamp.strftime('%H:%M UTC') }} · Score {{ "%.1f"|format([item.composite_score, 5.0]|min) }}/5 · ID {{ item.post.message_id }}{% if username %} · [↗ t.me](https://t.me/{{ username }}/{{ item.post.message_id }}){% endif %}</small>
 
 {{ item.analysis.summary }}
 
@@ -41,11 +38,8 @@
 {% endif %}
 
 ---
-{% endif %}
 {% else %}
-_No posts above threshold for this channel._
-{% endfor %}
-
+_No reports today._
 {% endfor %}
 
 {% if content.appendix_items %}
@@ -64,19 +58,22 @@ _No posts above threshold for this channel._
 
 ## Statistics
 
-**Channels:** {{ content.channel_names | join(', ') or '—' }}
+<div class="stats-block">
+<b>Items:</b> {{ content.main_items|length + content.appendix_items|length }} published · {{ content.main_items|length }} priority · {{ content.appendix_items|length }} appendix{% if content.posts_clustered %} · {{ content.posts_clustered }} duplicates merged{% endif %}<br>
+{% if content.posts_scraped or content.posts_analysed or content.posts_skipped -%}
+<b>Pipeline:</b> {{ content.posts_scraped }} scraped · {{ content.posts_analysed }} analysed · {{ content.posts_skipped }} skipped (low-content)<br>
+{% endif -%}
+<b>Categories:</b> {% for cat, count in content.category_counts | dictsort(by='value', reverse=true) %}{{ cat }} {{ count }}{{ ' · ' if not loop.last }}{% endfor %}<br>
+<b>Channels:</b> {{ content.channel_names | join(', ') or '—' }}
+</div>
 
-| Metric | Value |
-|--------|-------|
-| Published items | {{ content.main_items|length + content.appendix_items|length }} |
-| Main briefing | {{ content.main_items|length }} |
-| Appendix | {{ content.appendix_items|length }} |
-{%- for cat, count in content.category_counts | dictsort(by='value', reverse=true) %}
-| {{ cat }} | {{ count }} |
-{%- endfor %}
-{%- if content.posts_scraped or content.posts_analysed or content.posts_skipped %}
-| Scraped | {{ content.posts_scraped }} |
-| Analysed | {{ content.posts_analysed }} |
-| Skipped (low-content) | {{ content.posts_skipped }} |
-| Duplicates merged | {{ content.posts_clustered }} |
-{%- endif %}
+<div class="smallprint">
+<b>READER'S KEY — HOW THIS DOCUMENT IS PRODUCED</b><br>
+This briefing is generated automatically by a fixed pipeline. This key is static boilerplate: it is never written or altered by the AI model and is identical in every edition.<br>
+<b>Pipeline.</b> Posts are collected from a configured list of Telegram channels, then each post is analysed individually by a language model, which assigns it a headline, summary, category, threat level, named entities, and four 1–5 scores (importance, urgency, credibility, relevance). Posts are then scored, de-duplicated, ranked, and laid out into this document by deterministic code. The Intelligence Assessment front page is a separate model pass that synthesises the day's top reports into themes, signals, and actors, with trend data drawn from the preceding seven days.<br>
+<b>Document order.</b> (1) <i>Intelligence Assessment</i> — situation summary, key themes, signals &amp; warnings, named actors, and emerging actors/topics (entities seen today but absent from the prior seven days). (2) <i>Executive Summary</i> — every CRITICAL-rated item regardless of score, then the highest-scored remaining reports, capped at ten. (3) <i>Priority Reports</i> — the day's main reports in descending priority order; the most important report always appears first, regardless of source channel. (4) <i>Appendix</i> — lower-priority items, also in score order. (5) <i>Statistics</i> — the day's pipeline counts.<br>
+<b>Scoring.</b> Each report's composite score = 0.4×importance + 0.3×urgency + 0.2×credibility + 0.1×relevance (each 1–5, model-assigned), multiplied by per-channel priority and credibility weights set in configuration. Configured keywords add a fixed boost; items categorised as Rumor are down-weighted; older posts decay exponentially with age toward a floor, so they are demoted but never hidden. Reports confirmed by other channels receive a corroboration boost. Displayed scores are capped at 5.0. Reports clear a configured score threshold to enter Priority Reports; if too few qualify, the highest-scoring remainder are promoted so the main section is never empty.<br>
+<b>De-duplication.</b> Near-identical reports across channels are merged: the highest-scored version is shown and the others appear on it as "Corroborated by" links rather than as separate entries.<br>
+<b>Threat levels.</b> <b><span style="color:#c0392b;">&#9632; CRITICAL</span></b> / <b><span style="color:#d35400;">&#9632; HIGH</span></b> / <b><span style="color:#b7950b;">&#9632; MODERATE</span></b> / <b><span style="color:#1e8449;">&#9632; LOW</span></b> are the model's assessment of immediate significance, independent of the composite score — a low-scoring CRITICAL item still surfaces in the Executive Summary.<br>
+<b>How to read.</b> Skim the front page for the day's shape, the Executive Summary for what matters most, then read Priority Reports top-down. Every ↗ link opens the original Telegram post for verification. All times are UTC. All summaries, titles, scores, and threat levels are machine-generated from single-source social media posts and should be treated as leads, not confirmed reporting.
+</div>

@@ -84,6 +84,30 @@ img { max-width: 300px; max-height: 200px; margin: 0.5em 0; display: block; }
 /* ── Dividers ─────────────────────────────────────────────────── */
 hr { border: none; border-top: 1px solid #ddd; margin: 1.2em 0; }
 
+/* ── Emerging actors (front page, single condensed line) ──────── */
+.emerging-list {
+  font-size: 0.85em;
+  line-height: 1.4;
+  margin: 0.2em 0;
+}
+
+/* ── Statistics block (compact, replaces the old table) ───────── */
+.stats-block {
+  font-size: 0.78em;
+  line-height: 1.6;
+}
+
+/* ── Smallprint reader's key ──────────────────────────────────── */
+.smallprint {
+  font-size: 0.68em;
+  color: #555;
+  line-height: 1.45;
+  margin-top: 1.8em;
+  border-top: 1px solid #bbb;
+  padding-top: 0.7em;
+}
+.smallprint b { color: #333; }
+
 /* ── Appendix two-column layout ───────────────────────────────── */
 .appendix-cols {
   column-count: 2;
