@@ -25,8 +25,10 @@ _SYNTHESIS_SYSTEM = (
     "highest-priority intelligence reports of a 24-hour monitoring period. "
     "Ground every statement strictly in the supplied reports — never invent events, numbers, "
     "quotes, or actors — and mark single-source or Rumor-category claims as unconfirmed "
-    "('reportedly'). Respond immediately with ONLY a valid JSON object: no reasoning preamble, "
-    "no markdown fences, no commentary outside the JSON."
+    "('reportedly'). Use names, titles, and offices exactly as the reports give them; do not "
+    "'correct' them from your own knowledge, which may be outdated. Respond immediately with "
+    "ONLY a valid JSON object: no reasoning preamble, no markdown fences, no commentary "
+    "outside the JSON."
 )
 
 _SYNTHESIS_INSTRUCTIONS = """

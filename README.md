@@ -374,15 +374,15 @@ Each `--batch` or `--generate` run writes a new uniquely timestamped PDF. The `.
 - Image analysis excerpt (if the post had a substantive image)
 - Attached images (up to 3, embedded in PDF)
 
-**Other Developments** — the remaining reports that cleared `min_composite_score`, one compact line each (badge, category, headline, channel, time, score, link), sorted by composite score descending. Posts qualify by clearing the threshold; if fewer than `min_main_items` qualify, the highest-scoring remainder are promoted, and the total is capped at `max_main_items` (excess goes to In Brief).
+**Other Developments** — the remaining reports that cleared `min_composite_score`, sorted by composite score descending. Each entry is a compact block: badge, category, bold headline and channel/time/score/link meta, then the full summary and (when present) a "Corroborated by N other channels" line with links. If fewer than `min_main_items` clear the threshold, the highest-scoring remainder are promoted, and the total is capped at `max_main_items` (excess goes to In Brief).
 
-**In Brief** — lower-priority posts, listed compactly with direct Telegram links.
+**In Brief** — lower-priority posts, listed compactly with direct Telegram links; cross-channel corroboration is abbreviated to a `+N corrob` marker.
 
 Each story appears in exactly one section — lead stories are not repeated below.
 
 **Statistics** — a compact block with the published item count, lead/other/in-brief split, channels covered, a per-category breakdown, and (after a `--batch` run) the pipeline funnel: scraped → analysed → skipped (low-content) → duplicates merged.
 
-**Reader's Key** — static smallprint at the end of every edition explaining how the document is produced, its section order, the scoring formula, de-duplication, and threat levels. It is template boilerplate, never written or altered by the LLM, and identical in every run.
+**Reader's Key** — static smallprint at the end of every edition explaining how the document is produced, its section order, the scoring formula (including the configured score threshold), de-duplication, and threat levels. It is template boilerplate, never written or altered by the LLM.
 
 ### Threat level scale
 
