@@ -257,3 +257,51 @@ def test_critical_lead_item_from_appendix_not_repeated_in_brief():
     md = render_markdown(content)
     assert md.count("Low-scored critical alert summary.") == 1
     assert "## In Brief" not in md  # its only appendix item was promoted to lead
+
+
+def test_lead_images_use_width_attribute_not_md_image():
+    # fitz.Story ignores CSS max-width; a natural-size image at a page break makes it
+    # silently drop the element and following blocks. Explicit width attr avoids this.
+    content = make_content(n_main=1, n_appendix=0)
+    content.main_items[0].post.media_paths = ["/abs/path/img.jpg"]
+    content.executive_items = content.main_items[:1]
+    md = render_markdown(content)
+    assert '<img src="/abs/path/img.jpg" width="300">' in md
+    assert "![](" not in md
+
+
+def test_other_developments_item_shows_summary_and_corroboration():
+    content = make_content(n_main=1, n_appendix=0)
+    item = content.main_items[0]
+    item.analysis.title = "Concise headline"
+    item.analysis.summary = "Full summary of the development."
+    item.corroborations = [
+        CorroborationRef(channel_slug="chan_b", message_id=7,
+                         timestamp=datetime(2026, 6, 7, 15, 0, tzinfo=timezone.utc))
+    ]
+    content.channel_links = {"chan_b": "chan_b"}
+    md = render_markdown(content)
+    dev_block = md[md.index("Other Developments"):md.index("## Statistics")]
+    assert "Concise headline" in dev_block
+    assert "Full summary of the development." in dev_block
+    assert "Corroborated by 1 other channel" in dev_block
+    assert "https://t.me/chan_b/7" in dev_block
+
+
+def test_in_brief_shows_corroboration_marker():
+    content = make_content(n_main=0, n_appendix=1)
+    content.appendix_items[0].corroborations = [
+        CorroborationRef(channel_slug="chan_b", message_id=7,
+                         timestamp=datetime(2026, 6, 7, 15, 0, tzinfo=timezone.utc)),
+        CorroborationRef(channel_slug="chan_c", message_id=8,
+                         timestamp=datetime(2026, 6, 7, 15, 0, tzinfo=timezone.utc)),
+    ]
+    md = render_markdown(content)
+    assert "+2 corrob" in md
+
+
+def test_readers_key_states_threshold():
+    content = make_content(n_main=1, n_appendix=0)
+    content.min_composite_score = 3.5
+    md = render_markdown(content)
+    assert "at least 3.5" in md

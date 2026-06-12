@@ -59,6 +59,8 @@ class BriefingContent:
     posts_analysed: int = 0
     posts_skipped: int = 0
     posts_clustered: int = 0
+    # The configured score threshold, carried so the reader's key can state it
+    min_composite_score: float = 0.0
 
 
 def _composite(a: AnalysisRecord) -> float:
@@ -256,4 +258,5 @@ def triage(
         category_counts=category_counts,
         executive_items=executive_items,
         posts_clustered=posts_clustered,
+        min_composite_score=config.min_composite_score,
     )

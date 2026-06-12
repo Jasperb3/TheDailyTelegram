@@ -558,3 +558,10 @@ def test_executive_items_uncapped_when_criticals_exceed_ten():
     config = TriageConfig(min_composite_score=0.0)
     result = triage(pairs, config)
     assert len(result.executive_items) == 12  # all criticals kept, no cap at 10
+
+
+def test_content_carries_min_composite_score():
+    post, analysis = make_pair()
+    config = TriageConfig(min_composite_score=3.5)
+    result = triage([(post, analysis)], config)
+    assert result.min_composite_score == 3.5
