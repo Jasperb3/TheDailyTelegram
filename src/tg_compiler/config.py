@@ -40,13 +40,17 @@ class TriageConfig(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     keyword_boost: float = 0.5
     min_composite_score: float = 2.5
-    min_main_items: int = 10    # if fewer items clear min_composite_score, promote top appendix items to fill
+    min_main_items: int = 15    # if fewer items clear min_composite_score, promote top appendix items to fill
     max_main_items: int = 50
     dedup_window_secs: int = 7200       # max age gap (seconds) for cross-channel dedup
     dedup_summary_window_secs: int = 21600  # window (6h) for summary/title Jaccard similarity dedup
     entity_cluster_window_secs: int = 86400  # wider window for entity-cluster dedup (24h)
-    recency_half_life_hours: float = 12.0  # composite score halves every this many hours of post age
-    recency_floor: float = 0.6          # minimum recency multiplier, however old the post
+    recency_half_life_hours: float = 24.0  # composite score halves every this many hours of post age
+    recency_floor: float = 0.7          # minimum recency multiplier, however old the post
+    # ranking multiplier per threat level, applied to the composite score
+    threat_multipliers: dict[str, float] = Field(
+        default_factory=lambda: {"CRITICAL": 1.15, "HIGH": 1.05, "MODERATE": 1.0, "LOW": 0.85}
+    )
     corroboration_weight: float = 0.15  # composite-score multiplier per corroborating channel
     corroboration_cap: float = 1.5      # max multiplier from corroboration boost
     rumor_penalty: float = 0.7          # composite-score multiplier applied to category == "Rumor"

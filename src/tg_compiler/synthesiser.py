@@ -136,7 +136,7 @@ async def synthesise(config: AppConfig, posts: list[dict], trends: dict | None =
                     {"role": "user", "content": user_message},
                 ],
                 temperature=0.2,
-                max_tokens=8000,
+                max_tokens=12000,
             )
         )
     except Exception as e:

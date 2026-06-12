@@ -367,8 +367,9 @@ def test_executive_items_includes_all_critical_regardless_of_score():
                                     summary=summaries[i])
         analysis.threat_level = "HIGH"
         pairs.append((post, analysis))
-    # One CRITICAL item with a low composite score
-    crit_post, crit_analysis = make_pair(msg_id=99, importance=2, urgency=2, credibility=2, relevance=2,
+    # One CRITICAL item with a low composite score (credibility 3: substantiated enough
+    # to keep its CRITICAL badge past the badge guard)
+    crit_post, crit_analysis = make_pair(msg_id=99, importance=2, urgency=2, credibility=3, relevance=2,
                                           summary="A critical low-scored but urgent unrelated alert")
     crit_analysis.threat_level = "CRITICAL"
     pairs.append((crit_post, crit_analysis))
@@ -482,7 +483,7 @@ def test_recency_anchored_to_briefing_day_for_past_dates():
 
 
 def test_executive_items_includes_critical_from_appendix():
-    crit_post, crit_analysis = make_pair(msg_id=99, importance=2, urgency=2, credibility=2, relevance=2,
+    crit_post, crit_analysis = make_pair(msg_id=99, importance=2, urgency=2, credibility=3, relevance=2,
                                           summary="A critical alert that scored below the main threshold")
     crit_analysis.threat_level = "CRITICAL"
     high_post, high_analysis = make_pair(msg_id=1, importance=5, urgency=5, credibility=5, relevance=5,
@@ -565,3 +566,42 @@ def test_content_carries_min_composite_score():
     config = TriageConfig(min_composite_score=3.5)
     result = triage([(post, analysis)], config)
     assert result.min_composite_score == 3.5
+
+
+def test_badge_guard_demotes_unsubstantiated_critical():
+    # A Rumor-category CRITICAL is demoted to HIGH
+    p1, a1 = make_pair(msg_id=1, category="Rumor", credibility=4,
+                       summary="An alleged unverified attack on a coastal city region")
+    a1.threat_level = "CRITICAL"
+    # A low-credibility CRITICAL is demoted to HIGH
+    p2, a2 = make_pair(msg_id=2, category="Breaking News", credibility=2,
+                       summary="Completely different story about a diplomatic summit meeting")
+    a2.threat_level = "CRITICAL"
+    # A substantiated CRITICAL keeps its badge
+    p3, a3 = make_pair(msg_id=3, category="Breaking News", credibility=4,
+                       summary="Another unrelated report on missile defence procurement plans")
+    a3.threat_level = "CRITICAL"
+
+    config = TriageConfig(min_composite_score=0.0)
+    result = triage([(p1, a1), (p2, a2), (p3, a3)], config)
+    levels = {t.post.message_id: t.analysis.threat_level for t in result.main_items}
+    assert levels[1] == "HIGH"
+    assert levels[2] == "HIGH"
+    assert levels[3] == "CRITICAL"
+
+
+def test_threat_multiplier_ranks_low_below_moderate():
+    # identical axis scores, different threat levels: LOW is down-weighted, CRITICAL boosted
+    p1, a1 = make_pair(msg_id=1, summary="A sporting event preview with identical scores")
+    a1.threat_level = "LOW"
+    p2, a2 = make_pair(msg_id=2, summary="A diplomatic development report with same numbers")
+    a2.threat_level = "MODERATE"
+    p3, a3 = make_pair(msg_id=3, credibility=3, summary="An entirely different confirmed conflict escalation event")
+    a3.threat_level = "CRITICAL"
+
+    config = TriageConfig(min_composite_score=0.0)
+    result = triage([(p1, a1), (p2, a2), (p3, a3)], config)
+    by_id = {t.post.message_id: t.composite_score for t in result.main_items}
+    assert by_id[1] < by_id[2] < by_id[3]
+    assert abs(by_id[1] / by_id[2] - 0.85) < 0.01
+    assert abs(by_id[3] / by_id[2] - 1.15) < 0.01

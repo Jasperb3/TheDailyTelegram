@@ -160,6 +160,13 @@ def triage(
         if not all([analysis.importance_score, analysis.urgency_score,
                     analysis.credibility_score, analysis.relevance_score]):
             continue
+        # Badge guard: CRITICAL means "confirmed ... underway" — a rumor or a
+        # low-credibility claim can't be CRITICAL, so demote to HIGH. This stops
+        # unsubstantiated posts hijacking the guaranteed lead-section slots.
+        if analysis.threat_level == "CRITICAL" and (
+            analysis.category == "Rumor" or analysis.credibility_score <= 2
+        ):
+            analysis.threat_level = "HIGH"
         priority = (channel_priorities or {}).get(post.channel_name, 1.0)
         credibility = (channel_credibilities or {}).get(post.channel_name, 1.0)
         score = _composite(analysis) * priority * credibility
@@ -171,6 +178,7 @@ def triage(
         score = min(5.0, score)
         if analysis.category == "Rumor":
             score *= config.rumor_penalty
+        score *= config.threat_multipliers.get(analysis.threat_level, 1.0)
         score *= _recency_multiplier(post.timestamp, now, config.recency_half_life_hours, config.recency_floor)
         scored.append(TriagedPost(post=post, analysis=analysis, composite_score=score))
 

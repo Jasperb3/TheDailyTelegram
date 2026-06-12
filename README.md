@@ -133,7 +133,7 @@ triage:
   keywords: ["urgent", "breaking", "launch"]  # words that add keyword_boost to a post's score
   keyword_boost: 0.5        # score added when a keyword matches (total capped at 5.0)
   min_composite_score: 3.5  # posts below this go to the Appendix section
-  min_main_items: 10        # if fewer posts clear the threshold, top appendix items are promoted to fill
+  min_main_items: 15        # if fewer posts clear the threshold, top appendix items are promoted to fill
   max_main_items: 50        # hard cap on main briefing length (overflow → appendix)
   dedup_window_secs: 7200   # time window for entity-overlap deduplication (default: 2h)
   dedup_summary_window_secs: 21600   # window for summary/title word-overlap dedup (default: 6h)
@@ -141,8 +141,13 @@ triage:
   dedup_jaccard_threshold: 0.28      # min word-overlap ratio for summary/title dedup
   dedup_entity_overlap_count: 3      # shared entities required within dedup_window_secs
   dedup_entity_cluster_overlap_count: 4  # shared entities required within entity_cluster_window_secs
-  recency_half_life_hours: 12.0      # composite score halves every this many hours of post age
-  recency_floor: 0.6                 # minimum recency multiplier, however old the post
+  recency_half_life_hours: 24.0      # composite score halves every this many hours of post age
+  recency_floor: 0.7                 # minimum recency multiplier, however old the post
+  threat_multipliers:                # ranking multiplier per threat badge
+    CRITICAL: 1.15
+    HIGH: 1.05
+    MODERATE: 1.0
+    LOW: 0.85
   corroboration_weight: 0.15         # score multiplier added per corroborating channel
   corroboration_cap: 1.5             # max total multiplier from corroboration boost
   rumor_penalty: 0.7                 # score multiplier applied to posts categorised "Rumor"
@@ -399,11 +404,12 @@ Each story appears in exactly one section — lead stories are not repeated belo
 base  = 0.4 × importance + 0.3 × urgency + 0.2 × credibility + 0.1 × relevance
 score = base × channel_priority × channel_credibility        (capped at 5.0 after keyword boost)
       × rumor_penalty (if category is "Rumor")
+      × threat_multiplier (CRITICAL 1.15 / HIGH 1.05 / MODERATE 1.0 / LOW 0.85)
       × recency multiplier (halves every recency_half_life_hours, floored at recency_floor)
       × corroboration boost (1 + 0.15 per corroborating channel, capped at 1.5×)
 ```
 
-Each dimension is rated 1–5 by the VLM. Keyword matches add `keyword_boost` (default 0.5) before the cap. The recency decay is anchored to the briefing day, so regenerating a past date reproduces that day's ranking. Displayed scores are clamped to 5.0.
+Each dimension is rated 1–5 by the VLM. Keyword matches add `keyword_boost` (default 0.5) before the cap. Badge guard: a CRITICAL threat level on a Rumor-category post or one with credibility ≤ 2 is demoted to HIGH at triage time — CRITICAL implies confirmation, and unsubstantiated posts must not claim guaranteed Lead Reports slots. The recency decay is anchored to the briefing day, so regenerating a past date reproduces that day's ranking. Displayed scores are clamped to 5.0.
 
 ---
 
