@@ -14,8 +14,6 @@
 
 {{ item.analysis.summary }}
 
-**Entities:** {{ item.analysis.key_entities | clean_entities | join(', ') or '—' }}
-
 {% set cross = item.corroborations | selectattr('channel_slug', 'ne', item.post.channel_name) | list %}
 {% set same = item.corroborations | selectattr('channel_slug', 'eq', item.post.channel_name) | list %}
 {% if cross %}
