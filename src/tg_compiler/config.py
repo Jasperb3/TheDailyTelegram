@@ -1,6 +1,8 @@
 from __future__ import annotations
 import os
 import yaml
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -64,6 +66,7 @@ class GenerationConfig(BaseModel):
     output_dir: str = "./briefings"
     generate_at: str = "23:59"          # time for daily auto-generation in daemon mode (HH:MM, interpreted in timezone below)
     timezone: str = "UTC"               # IANA timezone name for generate_at scheduling (e.g. "Europe/London")
+    pdf_layout: Literal["desktop", "mobile"] = "desktop"  # CSS layout for the generated PDF; override with --layout
 
 
 class StorageConfig(BaseModel):

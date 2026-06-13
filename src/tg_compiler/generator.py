@@ -41,6 +41,7 @@ def generate_briefing(
     content: BriefingContent,
     output_dir: str,
     pdf: bool = False,
+    layout: str = "desktop",
 ) -> Path:
     date_str = content.date.isoformat()
     date_dir = Path(output_dir) / date_str
@@ -52,14 +53,15 @@ def generate_briefing(
     log.info("Markdown briefing saved to %s", md_path)
 
     if pdf:
-        return _render_pdf(md_text, date_dir, date_str)
+        return _render_pdf(md_text, date_dir, date_str, layout)
     return md_path
 
 
-def _render_pdf(md_text: str, out: Path, date_str: str) -> Path:
+def _render_pdf(md_text: str, out: Path, date_str: str, layout: str = "desktop") -> Path:
     from markdown_pdf import MarkdownPdf, Section
 
-    css_path = TEMPLATES_DIR / "briefing.css"
+    css_filename = "briefing.css" if layout == "desktop" else "briefing_mobile.css"
+    css_path = TEMPLATES_DIR / css_filename
     user_css = css_path.read_text() if css_path.exists() else None
 
     ts = datetime.now().strftime("%H%M%S")

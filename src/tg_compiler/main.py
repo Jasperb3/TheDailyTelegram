@@ -27,6 +27,7 @@ async def generate_daily_briefing(
     posts_scraped: int = 0,
     posts_analysed: int = 0,
     posts_skipped: int = 0,
+    layout: str | None = None,
 ) -> tuple[str, "BriefingContent"]:
     from tg_compiler.triage import triage as do_triage, BriefingContent
     from tg_compiler.generator import generate_briefing
@@ -45,7 +46,8 @@ async def generate_daily_briefing(
     content.posts_scraped = posts_scraped
     content.posts_analysed = posts_analysed
     content.posts_skipped = posts_skipped
-    path = generate_briefing(content, config.generation.output_dir, pdf=True)
+    path = generate_briefing(content, config.generation.output_dir, pdf=True,
+                              layout=layout or config.generation.pdf_layout)
     log.info("Briefing generated: %s", path)
     return path, content
 
@@ -245,6 +247,12 @@ def main() -> None:
         help="Re-scrape from this point (HH:MM, YYYY-MM-DD, or YYYY-MM-DDTHH:MM). "
              "Resets channel cursors and overrides lookback_seconds.",
     )
+    parser.add_argument(
+        "--layout",
+        choices=["desktop", "mobile"],
+        default=None,
+        help="PDF layout to use (default: config.generation.pdf_layout, falling back to 'desktop').",
+    )
     args = parser.parse_args()
 
     if not (args.batch or args.daemon or args.generate or args.analyse):
@@ -253,6 +261,9 @@ def main() -> None:
 
     cfg = load_config(args.config, env_override=True)
     os.makedirs(cfg.storage.media_dir, exist_ok=True)
+
+    if args.layout:
+        cfg.generation.pdf_layout = args.layout
 
     since_dt = None
     if args.since:

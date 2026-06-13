@@ -1,0 +1,138 @@
+/* ── Page & body ──────────────────────────────────────────────── */
+@page { margin: 10mm 12mm; }
+body {
+  font-family: Georgia, "Times New Roman", serif;
+  max-width: 100%;
+  margin: auto;
+  color: #1a1a1a;
+  font-size: 1.15em;
+  line-height: 1.55;
+}
+
+/* ── Masthead ─────────────────────────────────────────────────── */
+.masthead { text-align: center; margin-bottom: 1.4em; }
+.masthead-rule-thick {
+  border: none; border-top: 4px solid #1a1a1a; margin: 0;
+}
+.masthead-rule-double {
+  border: none; border-top: 3px double #1a1a1a; margin: 0.3em 0;
+}
+.masthead-rule-thin {
+  border: none; border-top: 1px solid #1a1a1a; margin: 0;
+}
+.masthead-title {
+  font-size: 1.9em;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.15;
+  margin: 0.3em 0 0.2em;
+}
+.masthead-meta {
+  font-size: 0.85em;
+  color: #444;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 0.3em 0 0.3em;
+}
+
+/* ── Headings ─────────────────────────────────────────────────── */
+h1 { font-size: 1.6em; border-bottom: 2px solid #333; padding-bottom: 0.3em; }
+h2 {
+  font-size: 1.2em;
+  color: #1a1a1a;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-top: 2px solid #1a1a1a;
+  border-bottom: 1px solid #bbb;
+  padding: 0.35em 0 0.25em;
+  margin-top: 1.6em;
+}
+h3 { font-size: 1.08em; color: #1a1a1a; font-weight: bold; }
+
+/* ── Category slugs ───────────────────────────────────────────── */
+.cat-slug {
+  display: inline;
+  font-size: 0.8em;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8b0000;
+  font-style: normal;
+}
+
+/* ── Executive summary ────────────────────────────────────────── */
+.exec-summary {
+  margin: 0.4em 0 0.8em;
+  font-size: 1em;
+  line-height: 1.5;
+}
+.exec-item {
+  padding: 0.35em 0;
+  border-bottom: 1px solid #eee;
+}
+.exec-meta { color: #666; font-size: 0.95em; }
+
+/* ── Tables ───────────────────────────────────────────────────── */
+table { border-collapse: collapse; width: 100%; }
+td, th { border: 1px solid #ccc; padding: 6px 8px; text-align: left; white-space: normal; }
+th { background: #f4f4f4; font-weight: bold; }
+
+/* ── Images ───────────────────────────────────────────────────── */
+img { max-width: 100%; height: auto; margin: 0.5em 0; display: block; }
+
+/* ── Dividers ─────────────────────────────────────────────────── */
+hr { border: none; border-top: 1px solid #ddd; margin: 1.2em 0; }
+
+/* ── Other Developments list ──────────────────────────────────── */
+.dev-list {
+  font-size: 1em;
+  line-height: 1.6;
+  margin: 0.4em 0 0.8em;
+}
+.dev-item {
+  padding: 0.6em 0;
+  border-bottom: 1px solid #e4e4e4;
+}
+.dev-corrob { color: #666; font-size: 0.95em; }
+
+/* ── Emerging actors (front page, single condensed line) ──────── */
+.emerging-list {
+  font-size: 1em;
+  line-height: 1.5;
+  margin: 0.2em 0;
+}
+
+/* ── Statistics block (compact, replaces the old table) ───────── */
+.stats-block {
+  font-size: 0.92em;
+  line-height: 1.7;
+}
+
+/* ── Smallprint reader's key ──────────────────────────────────── */
+.smallprint {
+  font-size: 0.8em;
+  color: #555;
+  line-height: 1.5;
+  margin-top: 1.8em;
+  border-top: 1px solid #bbb;
+  padding-top: 0.7em;
+}
+.smallprint b { color: #333; }
+
+/* ── Appendix layout (single column on mobile) ────────────────── */
+.appendix-cols {
+  column-count: 1;
+  font-size: 0.95em;
+  line-height: 1.55;
+  margin-top: 0.8em;
+}
+.appendix-item {
+  break-inside: avoid;
+  padding-bottom: 0.65em;
+  margin-bottom: 0.65em;
+  border-bottom: 1px solid #e0e0e0;
+}
+.appendix-item .a-channel { font-weight: bold; }
+.appendix-item .a-time { color: #666; }
+.appendix-item .a-score { color: #888; font-style: italic; font-size: 0.9em; }
